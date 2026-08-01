@@ -84,7 +84,30 @@ DISCUSSION_FIELDS = """
   number title url createdAt updatedAt isAnswered
   author { login } category { name emoji }
   repository { nameWithOwner }
-  comments(last:1) { totalCount nodes { author { login } createdAt } }
+"""
+
+# A discussion's conversation is nested: `comments` are only the top-level
+# ones, and every reply under them is invisible to a query that stops there.
+# One thread here had 7 comments and 59 replies, so "who spoke last" read as a
+# message from weeks earlier and the dashboard called it quiet.
+#
+# Replies are taken per top-level comment rather than from the last few
+# comments, because GitHub orders comments by when they were *started*: an
+# answer posted today under the first question does not move that question to
+# the end of the list.
+DISCUSSION_THREAD = """
+  number
+  repository { nameWithOwner }
+  comments(first:50) {
+    totalCount
+    nodes {
+      author { login } createdAt bodyText url
+      replies(last:20) {
+        totalCount
+        nodes { author { login } createdAt bodyText url }
+      }
+    }
+  }
 """
 
 # Reasons worth a place on a dashboard. `ci_activity` is deliberately absent:
@@ -324,8 +347,6 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             continue
         repo = (node.get("repository") or {}).get("nameWithOwner") or "?"
         author = (node.get("author") or {}).get("login") or "ghost"
-        comments = node.get("comments") or {}
-        last = (comments.get("nodes") or [None])[0]
         key = f"{repo}#d{node['number']}"
         out[key] = {
             "id": key,
@@ -345,9 +366,11 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             "category": (node.get("category") or {}).get("name") or "",
             "labels": [],
             "assignees": [],
-            "comments": comments.get("totalCount", 0),
-            "last_comment": ({"login": (last.get("author") or {}).get("login") or "ghost",
-                              "at": ts(last.get("createdAt"))} if last else None),
+            "comments": 0,
+            "last_comment": None,
+            # Filled by the thread pass; None means "not fetched yet", which is
+            # not the same as "nobody has written anything".
+            "participants": None,
             "review_decision": None,
             "found_by": ["discussion"],
             "threads": None,
@@ -357,6 +380,74 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             "notifications": [],
         }
     return out
+
+
+def discussion_threads(client, keys: list[tuple[str, int]], batch: int = 8) -> dict:
+    """Every message in the given discussions, replies included.
+
+    `keys` are (repo, number). Batched small because each discussion asks for
+    up to 50 comments with 20 replies apiece, and GraphQL bills for the lot.
+    """
+    out: dict[str, dict] = {}
+    for start in range(0, len(keys), batch):
+        chunk = keys[start:start + batch]
+        aliases = []
+        for i, (repo, number) in enumerate(chunk):
+            owner, _, name = repo.partition("/")
+            aliases.append(f'  d{i}: repository(owner:"{owner}", name:"{name}") '
+                           f'{{ discussion(number:{number}) {{ ...discThread }} }}')
+        query = ("query {\n" + "\n".join(aliases) +
+                 "\n  rateLimit { cost remaining limit resetAt }\n}\n"
+                 "fragment discThread on Discussion {" + DISCUSSION_THREAD + "}")
+        data = client.graphql(query)
+        for alias, value in data.items():
+            if alias in ("rateLimit", "_errors") or not value:
+                continue
+            node = value.get("discussion")
+            if not node:
+                continue
+            repo = (node.get("repository") or {}).get("nameWithOwner") or "?"
+            out[f"{repo}#d{node['number']}"] = _conversation(node)
+    return out
+
+
+def _conversation(node: dict) -> dict:
+    """Flatten a nested discussion into "who said what, when"."""
+    block = node.get("comments") or {}
+    messages: list[dict] = []
+    hidden = 0
+    for comment in block.get("nodes") or []:
+        if not comment:
+            continue
+        messages.append(_message(comment, reply=False))
+        replies = comment.get("replies") or {}
+        shown = [r for r in replies.get("nodes") or [] if r]
+        # A branch longer than the page asked for: say so rather than quietly
+        # reporting a stale "last spoke".
+        hidden += max(0, replies.get("totalCount", 0) - len(shown))
+        for reply in shown:
+            messages.append(_message(reply, reply=True))
+
+    messages.sort(key=lambda m: m["at"])
+    last = messages[-1] if messages else None
+    return {
+        "comments": len(messages) + hidden,
+        "participants": sorted({m["login"] for m in messages}),
+        "last_comment": ({"login": last["login"], "at": last["at"],
+                          "excerpt": last["excerpt"], "url": last["url"],
+                          "reply": last["reply"]} if last else None),
+        "messages_truncated": hidden,
+    }
+
+
+def _message(node: dict, reply: bool) -> dict:
+    return {
+        "login": (node.get("author") or {}).get("login") or "ghost",
+        "at": ts(node.get("createdAt")),
+        "excerpt": (node.get("bodyText") or "")[:280],
+        "url": node.get("url") or "",
+        "reply": reply,
+    }
 
 
 def own_repos_with_discussions(client) -> list[str]:
@@ -480,14 +571,16 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
     # cannot have grown a new thread, so its expensive half is reused. On a
     # steady day this turns a ~120-point poll into a ~5-point one.
     stale: list[tuple[str, int]] = []
+    stale_disc: list[tuple[str, int]] = []
     for key, item in items.items():
-        if item["kind"] != "pr":
+        if item["kind"] not in ("pr", "discussion"):
             continue
         old = cache.get(key)
         if old and old.get("updated") == item["updated"] and old.get("detail"):
             item.update(old["detail"])
             continue
-        stale.append((item["repo"], item["number"]))
+        (stale if item["kind"] == "pr" else stale_disc).append(
+            (item["repo"], item["number"]))
 
     if stale:
         try:
@@ -500,11 +593,26 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
                 items[key].update(detail)
                 cache[key] = {"updated": items[key]["updated"], "detail": detail}
 
-    # A pull request whose details never arrived would silently look thread-free;
-    # say so instead of showing a calm board built on missing data.
+    if stale_disc:
+        try:
+            convos = discussion_threads(client, stale_disc,
+                                        cfg.get("discussion_batch", 8))
+        except Exception as err:  # noqa: BLE001
+            convos = {}
+            warnings.append(f"обсуждения не раскрыты: {err}")
+        for key, convo in convos.items():
+            if key in items:
+                items[key].update(convo)
+                cache[key] = {"updated": items[key]["updated"], "detail": convo}
+
+    # Details that never arrived would silently look like "no threads" and
+    # "nobody has written" — a calm board built on missing data. Say so.
     for item in items.values():
         if item["kind"] == "pr" and item["threads"] is None:
             item["incomplete"] = True
+        elif item["kind"] == "discussion" and item.get("participants") is None:
+            item["incomplete"] = True
+            item["participants"] = []
 
     try:
         notes = notifications(client, cfg.get("notifications_include_ci", False))

@@ -256,6 +256,64 @@ def test_your_own_announcement_nobody_replied_to_is_idle():
     assert v["turn"] == rules.IDLE
 
 
+def discussion(**over):
+    base = {"kind": "discussion", "repo": "acme/tool", "id": "acme/tool#d3",
+            "author": "stranger", "participants": []}
+    base.update(over)
+    return item(**base)
+
+
+def test_a_reply_to_you_elsewhere_is_your_move():
+    """The case the first version missed entirely.
+
+    You answer a question in someone's discussion, they come back a week later,
+    and nothing on GitHub tells you — the thread is not "yours" by any field
+    the search returns.
+    """
+    v = verdict(discussion(participants=[ME, "stranger"],
+                           comments=4,
+                           last_comment={"login": "stranger", "at": NOW - DAY}))
+    assert v["turn"] == rules.YOU
+    assert "stranger" in [r["text"] for r in v["reasons"]][0]
+
+
+def test_a_reply_inside_a_branch_counts_and_says_so():
+    """Replies live under comments; reading only the top level called this quiet."""
+    v = verdict(discussion(participants=[ME, "stranger"], comments=66,
+                           last_comment={"login": "stranger", "at": NOW - DAY,
+                                         "reply": True}))
+    assert v["turn"] == rules.YOU
+    assert "в ветке" in [r["text"] for r in v["reasons"]][0]
+
+
+def test_a_discussion_you_never_wrote_in_is_not_your_move():
+    v = verdict(discussion(participants=["alice", "bob"], comments=4,
+                           last_comment={"login": "bob", "at": NOW - DAY}))
+    assert v["turn"] == rules.THEM
+
+
+def test_a_reply_to_your_own_discussion_is_your_move():
+    v = verdict(discussion(mine=True, author=ME, participants=[ME, "stranger"],
+                           comments=3,
+                           last_comment={"login": "stranger", "at": NOW - DAY}))
+    assert v["turn"] == rules.YOU
+
+
+def test_you_replied_last_so_it_is_not_your_move():
+    v = verdict(discussion(participants=[ME, "stranger"], comments=5,
+                           last_comment={"login": ME, "at": NOW - DAY}))
+    assert v["turn"] != rules.YOU
+
+
+def test_a_branch_reply_on_your_own_repository_is_your_move():
+    v = verdict(discussion(repo=f"{ME}/tool", id=f"{ME}/tool#d3",
+                           participants=["stranger"], comments=9,
+                           last_comment={"login": "stranger", "at": NOW - DAY,
+                                         "reply": True}))
+    assert v["turn"] == rules.YOU
+    assert "в ветке" in [r["text"] for r in v["reasons"]][0]
+
+
 # ---------- archive ----------
 
 def test_years_old_review_request_is_archived_not_urgent():

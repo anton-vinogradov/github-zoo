@@ -38,6 +38,8 @@ function openDetails(item) {
     'незакрытые треды (' + threads.length + ')',
     threads.map(function (t) { return renderThread(t, item); })));
 
+  if (item.kind === 'discussion') body.appendChild(renderConversation(item));
+
   if (item.reviews && item.reviews.length) {
     body.appendChild(section('ревью', [h('dl', { class: 'kv' },
       flatten(item.reviews.slice(-8).map(function (r) {
@@ -96,6 +98,35 @@ function renderThread(t, item) {
       t.url ? h('a', { href: t.url, target: '_blank', rel: 'noopener', text: 'перейти' }) : null
     ])
   ]);
+}
+
+/* A discussion has no review threads, so the useful detail is the opposite
+   one: what the last message actually said, and who else is in the thread.
+   The count includes replies — the top-level number alone was reporting seven
+   messages for a sixty-six message conversation. */
+function renderConversation(item) {
+  var last = item.last_comment;
+  var kids = [];
+  if (last) {
+    kids.push(h('div', { class: 'thread' + (last.login !== state.login ? ' mine-turn' : '') }, [
+      h('div', { class: 'path' }, [
+        last.login + (last.reply ? ' — ответ в ветке' : '') + ' · ' + ago(last.at)
+      ]),
+      last.excerpt ? h('p', { class: 'excerpt', text: last.excerpt }) : null,
+      last.url ? h('div', { class: 'meta' }, [
+        h('a', { href: last.url, target: '_blank', rel: 'noopener', text: 'перейти' })
+      ]) : null
+    ]));
+  }
+  var who = (item.participants || []).filter(function (p) { return p !== state.login; });
+  kids.push(h('dl', { class: 'kv' }, [
+    h('dt', { text: 'сообщений' }),
+    h('dd', { text: String(item.comments || 0) + (item.messages_truncated
+      ? ' (показаны не все ветки)' : '') }),
+    who.length ? h('dt', { text: 'кто ещё' }) : null,
+    who.length ? h('dd', { text: who.join(', ') }) : null
+  ]));
+  return section('обсуждение', kids);
 }
 
 function renderCi(ci) {

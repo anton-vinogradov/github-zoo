@@ -204,6 +204,72 @@ def test_detail_flattens_threads_and_reviews():
     assert got["head_at"] == collect.ts("2026-07-03T00:00:00Z")
 
 
+# ---------- discussions ----------
+
+def comment(login, at, body="", replies=None, total=None):
+    kids = replies or []
+    return {"author": {"login": login}, "createdAt": at, "bodyText": body, "url": "u",
+            "replies": {"totalCount": total if total is not None else len(kids),
+                        "nodes": kids}}
+
+
+def test_the_last_word_can_be_inside_a_branch():
+    """The bug this whole pass exists for.
+
+    Top-level comments are ordered by when each was started, so an answer
+    posted today under June's question does not move it to the end. Reading
+    only `comments(last:1)` reported June and called the thread quiet.
+    """
+    got = collect._conversation({"comments": {"totalCount": 2, "nodes": [
+        comment("me", "2026-06-01T00:00:00Z", "вопрос", replies=[
+            {"author": {"login": "stranger"}, "createdAt": "2026-07-31T00:00:00Z",
+             "bodyText": "вот ответ", "url": "r"}]),
+        comment("me", "2026-06-15T00:00:00Z", "ещё мысль"),
+    ]}})
+    assert got["last_comment"]["login"] == "stranger"
+    assert got["last_comment"]["reply"] is True
+    assert got["last_comment"]["excerpt"] == "вот ответ"
+    assert got["comments"] == 3
+
+
+def test_participants_include_everyone_from_both_levels():
+    got = collect._conversation({"comments": {"totalCount": 1, "nodes": [
+        comment("alice", "2026-01-01T00:00:00Z", replies=[
+            {"author": {"login": "bob"}, "createdAt": "2026-01-02T00:00:00Z",
+             "bodyText": "", "url": ""},
+            {"author": {"login": "me"}, "createdAt": "2026-01-03T00:00:00Z",
+             "bodyText": "", "url": ""}]),
+    ]}})
+    assert got["participants"] == ["alice", "bob", "me"]
+
+
+def test_a_branch_longer_than_the_page_is_admitted():
+    """Twenty replies fetched out of fifty means "last spoke" may be wrong."""
+    got = collect._conversation({"comments": {"totalCount": 1, "nodes": [
+        comment("alice", "2026-01-01T00:00:00Z", replies=[
+            {"author": {"login": "bob"}, "createdAt": "2026-01-02T00:00:00Z",
+             "bodyText": "", "url": ""}], total=50),
+    ]}})
+    assert got["messages_truncated"] == 49
+    assert got["comments"] == 51
+
+
+def test_an_empty_discussion_has_no_last_word():
+    got = collect._conversation({"comments": {"totalCount": 0, "nodes": []}})
+    assert got["last_comment"] is None
+    assert got["participants"] == []
+    assert got["comments"] == 0
+
+
+def test_a_deleted_author_in_a_reply_does_not_crash():
+    got = collect._conversation({"comments": {"totalCount": 1, "nodes": [
+        comment("alice", "2026-01-01T00:00:00Z", replies=[
+            {"author": None, "createdAt": "2026-01-02T00:00:00Z",
+             "bodyText": "", "url": ""}]),
+    ]}})
+    assert got["last_comment"]["login"] == "ghost"
+
+
 def test_a_pull_request_with_no_commits_does_not_crash():
     got = collect._detail({"number": 1, "repository": {"nameWithOwner": "o/r"},
                            "reviews": {"nodes": []}, "reviewRequests": {"nodes": []},

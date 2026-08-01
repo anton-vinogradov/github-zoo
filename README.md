@@ -38,7 +38,11 @@ waiting on you.
   work rather than as a notification you scrolled past.
 * **Issues**, including ones opened on your repositories that you have not
   answered — the classic thing that quietly ages out.
-* **Discussions**, both yours and ones you joined elsewhere.
+* **Discussions**, both yours and ones you wrote in elsewhere — including the
+  replies nested under each comment, which is where the answers actually are.
+  A thread here had 7 comments and 59 replies, so reading only the top level
+  reported a message from weeks earlier and called it quiet. If you wrote in a
+  discussion and someone answered after you, that is your move.
 * **Your notification inbox**, minus the noise. `ci_activity` is dropped by
   default: on a busy upstream it is 200 of 280 notifications. A notification
   with no matching item — usually a merged pull request — gets its own section

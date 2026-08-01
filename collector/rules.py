@@ -241,24 +241,43 @@ def _issue(item: dict, login: str, cfg: dict, now: float) -> dict:
 
 
 def _discussion(item: dict, login: str, cfg: dict, now: float) -> dict:
+    """Discussions, where "last spoke" has to mean the whole nested thread.
+
+    Top-level comments are only half a discussion; the answers live in replies
+    under them, and one thread here had 7 comments and 59 replies. collect.py
+    flattens both into `last_comment` and `participants`, and this reads the
+    flattened view — otherwise a reply from today reads as silence since June.
+    """
     last = item.get("last_comment") or {}
     mine_repo = item.get("repo", "").split("/")[0] == login
+    they_spoke_last = bool(last) and last.get("login") != login
+    where = " (в ветке)" if last.get("reply") else ""
 
     if mine_repo and not item.get("mine"):
         if not last:
             return {"turn": YOU, "reasons": [_reason(
                 "unanswered", "вопрос без ответа", 45)],
                 "waiting_since": item.get("created")}
-        if last.get("login") != login:
+        if they_spoke_last:
             return {"turn": YOU, "reasons": [_reason(
-                "reply", f"последним писал {last['login']}", 40)],
+                "reply", f"последним писал {last['login']}{where}", 40)],
                 "waiting_since": last.get("at")}
         return {"turn": THEM, "reasons": [_reason("answered", "ты ответил последним", 6)],
                 "waiting_since": last.get("at")}
 
-    if last and last.get("login") != login:
+    # Anywhere else, the question is whether this conversation is yours at all.
+    # Being subscribed to someone else's thread is not an obligation; having
+    # written in it and been answered is the whole point of this dashboard.
+    involved = item.get("mine") or login in (item.get("participants") or [])
+    if they_spoke_last and involved:
         return {"turn": YOU, "reasons": [_reason(
-            "reply", f"ответил {last['login']}", 25)], "waiting_since": last.get("at")}
+            "reply", f"тебе ответил {last['login']}{where}", 35)],
+            "waiting_since": last.get("at")}
+
+    if they_spoke_last:
+        return {"turn": THEM, "reasons": [_reason(
+            "watching", f"последним писал {last['login']}{where}", 2)],
+            "waiting_since": last.get("at")}
 
     # Your own announcement that nobody has replied to is not a task.
     return {"turn": IDLE if item.get("mine") and not item.get("comments")
