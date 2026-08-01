@@ -41,13 +41,14 @@ LIGHT_FIELDS = """
   __typename
   ... on PullRequest {
     id number title url state isDraft createdAt updatedAt reviewDecision
+    merged mergedAt closedAt
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
     comments(last:1) { totalCount nodes { author { login } createdAt } }
     assignees(first:5) { nodes { login } }
   }
   ... on Issue {
-    id number title url state createdAt updatedAt
+    id number title url state createdAt updatedAt closedAt stateReason
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
     comments(last:1) { totalCount nodes { author { login } createdAt } }
@@ -142,15 +143,26 @@ def _search_query(names: list[str]) -> str:
             "\n  rateLimit { cost remaining limit resetAt }\n}")
 
 
-def search_items(client, login: str, extra: list[str] | None = None) -> dict:
-    """Every open pull request and issue that touches `login`, unioned.
+def search_items(client, login: str, extra: list[str] | None = None,
+                 done_days: int = 7) -> dict:
+    """Everything that touches `login`: open, plus recently closed.
 
     Returns {id: item}. The union is by GraphQL node id, and each item records
     *which* searches found it — that is what later tells an authored pull
     request from one merely commented on.
+
+    Recently closed matters for two reasons. It is the answer to "what did I
+    get done", which an open-only board can never show — three pull requests
+    merged on Thursday simply vanish. And it is where most of the homeless
+    notifications were pointing: a notice about a merged pull request had no
+    card to attach to, so it landed in a pile labelled "no card".
     """
     names = [name for name, _ in SEARCHES]
     variables = {name: tmpl.format(login=login) for name, tmpl in SEARCHES}
+    if done_days > 0:
+        since = _date_days_ago(done_days)
+        names.append("done")
+        variables["done"] = f"involves:{login} is:closed closed:>={since}"
     for i, query in enumerate(extra or []):
         key = f"extra{i}"
         names.append(key)
@@ -173,6 +185,11 @@ def search_items(client, login: str, extra: list[str] | None = None) -> dict:
     return items
 
 
+def _date_days_ago(days: int) -> str:
+    from datetime import timedelta
+    return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+
+
 def _light_item(node: dict, login: str) -> dict | None:
     kind = {"PullRequest": "pr", "Issue": "issue"}.get(node.get("__typename"))
     if not kind:
@@ -181,6 +198,10 @@ def _light_item(node: dict, login: str) -> dict | None:
     author = (node.get("author") or {}).get("login") or "ghost"
     comments = node.get("comments") or {}
     last = (comments.get("nodes") or [None])[0]
+    # GitHub reports a merged pull request as state MERGED, but a closed issue
+    # and an abandoned pull request are both CLOSED — and those are different
+    # outcomes worth different words on the card.
+    state = (node.get("state") or "OPEN").upper()
     return {
         "id": f"{repo}#{node['number']}",
         "node_id": node.get("id"),
@@ -190,7 +211,10 @@ def _light_item(node: dict, login: str) -> dict | None:
         "number": node["number"],
         "title": node.get("title") or "",
         "url": node.get("url") or "",
-        "state": (node.get("state") or "OPEN").upper(),
+        "state": state,
+        "merged": bool(node.get("merged")),
+        "closed_at": ts(node.get("mergedAt") or node.get("closedAt")),
+        "close_reason": node.get("stateReason"),
         "draft": bool(node.get("isDraft")),
         "author": author,
         "mine": author == login,
@@ -357,6 +381,9 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             "title": node.get("title") or "",
             "url": node.get("url") or "",
             "state": "OPEN",
+            "merged": False,
+            "closed_at": 0.0,
+            "close_reason": None,
             "draft": False,
             "author": author,
             "mine": author == login,
@@ -548,7 +575,8 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
     started = time.time()
     warnings: list[str] = []
 
-    items = search_items(client, login, cfg.get("extra_searches") or [])
+    items = search_items(client, login, cfg.get("extra_searches") or [],
+                         int(cfg.get("done_days", 7)))
 
     # Which repositories have Discussions changes about once a year, so it is
     # looked up hourly rather than every poll.
@@ -574,6 +602,12 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
     stale_disc: list[tuple[str, int]] = []
     for key, item in items.items():
         if item["kind"] not in ("pr", "discussion"):
+            continue
+        # A merged pull request has no move left in it, so its threads and CI
+        # are not worth two points each — and there are more merged ones than
+        # open ones.
+        if item["state"] != "OPEN":
+            item["threads"] = []
             continue
         old = cache.get(key)
         if old and old.get("updated") == item["updated"] and old.get("detail"):

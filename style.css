@@ -204,6 +204,7 @@ html, body {
 
 .group.you .group-head h2 { color: var(--you); }
 .group.them .group-head h2 { color: var(--them); }
+.group.done .group-head h2 { color: var(--ok); }
 .group.idle .group-head h2,
 .group.archive .group-head h2 { color: var(--idle); }
 
@@ -228,6 +229,7 @@ html, body {
 .card:hover { border-color: var(--accent); }
 .card.you { border-left-color: var(--you); }
 .card.them { border-left-color: var(--them); }
+.card.done { border-left-color: var(--ok); }
 .card.idle, .card.archive { border-left-color: var(--idle); opacity: .75; }
 .card.hidden-item { opacity: .5; }
 

@@ -26,7 +26,7 @@ from __future__ import annotations
 
 DAY = 86400.0
 
-YOU, THEM, IDLE, ARCHIVE = "you", "them", "idle", "archive"
+YOU, THEM, IDLE, ARCHIVE, DONE = "you", "them", "idle", "archive", "done"
 
 # A review that says nothing about approval should not count as one.
 BLOCKING_REVIEW = "CHANGES_REQUESTED"
@@ -35,8 +35,14 @@ APPROVING_REVIEW = "APPROVED"
 
 def classify(item: dict, login: str, cfg: dict, now: float) -> dict:
     """Decide the bucket, the reasons for it, and how long it has been so."""
+    # Settled first: a merged pull request has no move left, and asking the
+    # rules below whose turn it is would put "nobody is reviewing this" on
+    # something that shipped on Thursday.
+    settled = item.get("state") not in (None, "OPEN")
     kind = item.get("kind")
-    if kind == "pr":
+    if settled:
+        verdict = _settled(item, now)
+    elif kind == "pr":
         verdict = _pull_request(item, login, cfg, now)
     elif kind == "issue":
         verdict = _issue(item, login, cfg, now)
@@ -67,8 +73,11 @@ def classify(item: dict, login: str, cfg: dict, now: float) -> dict:
     # dashboard exists to see past. They keep their verdict under `would_be`,
     # so the archive can still be sorted and cleared deliberately rather than
     # silently dropped.
+    # Something finished is never archived: the closed-search already bounds it
+    # to the last few days, and "done" is the one bucket where age is the point.
     idle_days = (now - (item.get("updated") or now)) / DAY
-    if idle_days >= float(cfg.get("ignore_days", 30)) and verdict["turn"] != IDLE:
+    if (not settled and idle_days >= float(cfg.get("ignore_days", 30))
+            and verdict["turn"] != IDLE):
         verdict["would_be"] = verdict["turn"]
         verdict["turn"] = ARCHIVE
         verdict["abandoned_days"] = round(idle_days)
@@ -86,6 +95,25 @@ def classify(item: dict, login: str, cfg: dict, now: float) -> dict:
 
 def _reason(code: str, text: str, weight: int = 0) -> dict:
     return {"code": code, "text": text, "weight": weight}
+
+
+def _settled(item: dict, now: float) -> dict:
+    """Something that is finished. What it says depends on how it ended.
+
+    Merged, abandoned and "not planned" are three different endings, and the
+    board is read partly to see what got done — so they get three different
+    words rather than one grey "closed".
+    """
+    closed = item.get("closed_at") or item.get("updated") or now
+    if item.get("merged"):
+        reason = _reason("merged", "смержен", 30)
+    elif item.get("kind") == "pr":
+        reason = _reason("dropped", "закрыт без мержа", 10)
+    elif item.get("close_reason") == "NOT_PLANNED":
+        reason = _reason("wontfix", "закрыт как ненужный", 5)
+    else:
+        reason = _reason("closed", "закрыт", 20)
+    return {"turn": DONE, "reasons": [reason], "waiting_since": closed}
 
 
 def _my_threads(item: dict, login: str) -> list[dict]:
@@ -316,6 +344,10 @@ def _priority(item: dict, verdict: dict, cfg: dict) -> float:
     turn = verdict["turn"]
     if turn == YOU:
         base += 20
+    elif turn == DONE:
+        # The only bucket where age counts down: what shipped today is the
+        # interesting part of "what got done", last week's is background.
+        return round(base - verdict.get("waiting_days", 0), 2)
     elif turn == IDLE:
         base -= 30
     elif turn == ARCHIVE:
@@ -344,7 +376,7 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
 
 def summarise(items: list[dict]) -> dict:
     """Counts the header shows, and the alerting compares against."""
-    buckets = {YOU: 0, THEM: 0, IDLE: 0, ARCHIVE: 0}
+    buckets = {YOU: 0, THEM: 0, IDLE: 0, ARCHIVE: 0, DONE: 0}
     stale = rotting = unread = 0
     for item in items:
         verdict = item.get("verdict") or {}
@@ -354,5 +386,5 @@ def summarise(items: list[dict]) -> dict:
         rotting += bool(verdict.get("rotting"))
         unread += verdict.get("unread") or 0
     return {"you": buckets[YOU], "them": buckets[THEM], "idle": buckets[IDLE],
-            "archive": buckets[ARCHIVE], "stale": stale, "rotting": rotting,
-            "unread": unread, "total": len(items)}
+            "archive": buckets[ARCHIVE], "done": buckets[DONE], "stale": stale,
+            "rotting": rotting, "unread": unread, "total": len(items)}

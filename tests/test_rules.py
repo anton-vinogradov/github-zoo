@@ -314,6 +314,69 @@ def test_a_branch_reply_on_your_own_repository_is_your_move():
     assert "в ветке" in [r["text"] for r in v["reasons"]][0]
 
 
+# ---------- settled ----------
+
+def test_a_merged_pull_request_is_done_not_a_task():
+    """Before this, a merged pull request either vanished or, if the searches
+    still returned it, collected "nobody is reviewing this"."""
+    v = verdict(item(mine=True, author=ME, state="MERGED", merged=True,
+                     closed_at=NOW - 2 * DAY, created=NOW - 40 * DAY))
+    assert v["turn"] == rules.DONE
+    assert "merged" in codes(v)
+    assert v["waiting_since"] == NOW - 2 * DAY
+
+
+def test_a_closed_pull_request_is_not_called_merged():
+    v = verdict(item(mine=True, author=ME, state="CLOSED", merged=False,
+                     closed_at=NOW - DAY))
+    assert v["turn"] == rules.DONE
+    assert "dropped" in codes(v)
+
+
+def test_a_closed_issue_is_done():
+    v = verdict(item(kind="issue", state="CLOSED", closed_at=NOW - DAY,
+                     close_reason="COMPLETED"))
+    assert v["turn"] == rules.DONE
+    assert "closed" in codes(v)
+
+
+def test_not_planned_reads_differently_from_fixed():
+    v = verdict(item(kind="issue", state="CLOSED", closed_at=NOW - DAY,
+                     close_reason="NOT_PLANNED"))
+    assert "wontfix" in codes(v)
+
+
+def test_settled_items_are_never_archived():
+    """The closed-search already bounds these; age is the point, not a reason
+    to hide them."""
+    v = verdict(item(mine=True, author=ME, state="MERGED", merged=True,
+                     closed_at=NOW - 3 * DAY, updated=NOW - 3 * DAY,
+                     created=NOW - 900 * DAY))
+    assert v["turn"] == rules.DONE
+
+
+def test_fresher_work_sorts_above_older_work():
+    """In "done", and only there, age counts down."""
+    today = verdict(item(state="MERGED", merged=True, closed_at=NOW - 3600))
+    last_week = verdict(item(state="MERGED", merged=True, closed_at=NOW - 6 * DAY))
+    assert today["priority"] > last_week["priority"]
+
+
+def test_done_never_outranks_a_live_obligation():
+    done = verdict(item(state="MERGED", merged=True, closed_at=NOW - 3600))
+    live = verdict(item(found_by=["review"]))
+    assert live["priority"] > done["priority"]
+
+
+def test_summary_counts_done():
+    got = rules.summarise([
+        {"verdict": verdict(item(state="MERGED", merged=True, closed_at=NOW - DAY))},
+        {"verdict": verdict(item(mine=True, author=ME, threads=[thread()]))},
+    ])
+    assert got["done"] == 1
+    assert got["you"] == 1
+
+
 # ---------- archive ----------
 
 def test_years_old_review_request_is_archived_not_urgent():

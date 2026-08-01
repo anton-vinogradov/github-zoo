@@ -186,10 +186,13 @@ function renderCard(item) {
     renderRowActions(item)
   ]);
 
-  var age = h('span', {
-    class: 'age' + (v.stale ? ' stale' : v.rotting ? ' rotting' : ''),
-    title: 'ход перешёл ' + when(v.waiting_since)
-  }, [days(v.waiting_days || 0)]);
+  var age = v.turn === 'done'
+    ? h('span', { class: 'age', title: when(item.closed_at || v.waiting_since) },
+        [ago(item.closed_at || v.waiting_since)])
+    : h('span', {
+        class: 'age' + (v.stale ? ' stale' : v.rotting ? ' rotting' : ''),
+        title: 'ход перешёл ' + when(v.waiting_since)
+      }, [days(v.waiting_days || 0)]);
 
   var side = h('div', { class: 'side' }, [
     age,
@@ -291,6 +294,7 @@ function renderSummary() {
   var bits = [];
   bits.push(s.you + ' ' + plural(s.you, 'ждёт', 'ждут', 'ждут') + ' тебя');
   bits.push(s.them + ' за другими');
+  if (s.done) bits.push(s.done + ' решено');
   if (s.stale) bits.push(s.stale + ' залежалось');
   // Folded-away items are counted out loud: a threshold that silently eats
   // seventeen cards is indistinguishable from a collector that lost them.

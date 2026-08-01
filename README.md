@@ -16,6 +16,7 @@ github-zoo sorts by obligation instead:
 | --- | --- |
 | **your move** | nothing happens until you act — an unanswered review comment, a red build on your branch, a review someone asked you for, an issue on your repository nobody replied to |
 | **waiting on them** | your part is done; only age is worth watching |
+| **done** | merged or closed in the last `done_days` — what actually shipped |
 | **quiet** | drafts and announcements nobody is waiting on |
 | **older than a month** | no movement in `ignore_days` — real, but not today's problem, and folded away |
 
@@ -43,6 +44,11 @@ waiting on you.
   A thread here had 7 comments and 59 replies, so reading only the top level
   reported a message from weeks earlier and called it quiet. If you wrote in a
   discussion and someone answered after you, that is your move.
+* **What you finished.** An open-only board cannot answer "what did I get
+  done": three pull requests merged on Thursday simply vanish from it. Merged,
+  closed and "not planned" are three different endings and say three different
+  things. This is also where most homeless notifications went — a notice about
+  a merged pull request now has a card to attach to.
 * **Your notification inbox**, minus the noise. `ci_activity` is dropped by
   default: on a busy upstream it is 200 of 280 notifications. A notification
   with no matching item — usually a merged pull request — gets its own section
@@ -117,6 +123,7 @@ documents every field inline. The ones worth knowing:
 | `poll_seconds` | 300 | how often to ask GitHub |
 | `stale_days` | 14 | how long your move may wait before it is called stale |
 | `ignore_days` | 30 | untouched for this long → out of the way (shown on request) |
+| `done_days` | 7 | how long merged and closed work stays on the board; 0 turns it off |
 | `unreviewed_days` | 3 | your pull request with no reviewer this long → ask for one |
 | `extra_searches` | `[]` | extra GitHub search strings to include |
 | `notifications_include_ci` | `false` | let CI notifications back in |

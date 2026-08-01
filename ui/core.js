@@ -9,6 +9,7 @@ var KIND_NAME = { pr: 'PR', issue: 'issue', discussion: 'обсуждение' }
 var GROUPS = [
   { key: 'you', title: 'Твой ход', hint: 'без тебя не сдвинется' },
   { key: 'them', title: 'Ждём других', hint: 'твоя часть сделана' },
+  { key: 'done', title: 'Решено', hint: 'закрыто за последние дни' },
   { key: 'idle', title: 'Тихо', hint: 'черновики и объявления' },
   { key: 'archive', title: 'Старее месяца', hint: 'порог ignore_days в конфиге' }
 ];
@@ -17,7 +18,7 @@ var GROUPS = [
    neutral: a board where everything is highlighted highlights nothing. */
 var HOT = { threads: 1, changes: 1, requested: 1, unanswered: 1, reply: 1, repushed: 1 };
 var BAD = { ci: 1, incomplete: 1 };
-var GOOD = { approved: 1, reviewed: 1, answered: 1 };
+var GOOD = { approved: 1, reviewed: 1, answered: 1, merged: 1, closed: 1 };
 
 var state = null;
 var view = {
@@ -131,7 +132,7 @@ function projects() {
 }
 
 function byGroup(items) {
-  var out = { you: [], them: [], idle: [], archive: [] };
+  var out = { you: [], them: [], done: [], idle: [], archive: [] };
   items.forEach(function (it) {
     var turn = (it.verdict && it.verdict.turn) || 'idle';
     (out[turn] || out.idle).push(it);
