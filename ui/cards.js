@@ -240,9 +240,12 @@ function renderRowActions(item) {
 }
 
 function act(path, body, okText) {
+  /* The server applies this to the snapshot it already has, so the fresh state
+     is ready by the time the reply lands — no delay to guess at, and no
+     waiting for the next poll to see the card go. */
   api(path, body).then(function (r) {
-    if (r && r.ok) { toast(okText); setTimeout(load, 400); }
-    else toast((r && r.error) || 'не получилось', 'warn');
+    if (r && r.ok) { toast(okText); return load(); }
+    toast((r && r.error) || 'не получилось', 'warn');
   }).catch(function () { toast('сервер не ответил', 'warn'); });
 }
 

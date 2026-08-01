@@ -173,6 +173,27 @@ class Board:
                 self.snapshot = dict(self.snapshot, polling=False, error=error,
                                      checked=time.time())
 
+    def reapply_acks(self) -> None:
+        """Re-hide and recount on the snapshot already in hand.
+
+        Snoozing is a decision about the board, not a question for GitHub, and
+        it used to be applied only inside the poll — so a card stayed put until
+        the next poll finished and the page happened to reload. Doing it here
+        makes the button instant and costs no API calls.
+        """
+        with self.lock:
+            snapshot = self.snapshot
+            items = snapshot.get("items") or []
+            if not items:
+                return
+            for item in items:
+                item.pop("hidden", None)
+                item.pop("hidden_until", None)
+            hidden = self.acks.apply(items, time.time())
+            summary = rules.summarise([i for i in items if not i.get("hidden")])
+            summary["hidden"] = hidden
+            self.snapshot = dict(snapshot, items=items, summary=summary)
+
     def loop(self) -> None:
         interval = int(self.cfg.get("poll_seconds", 300))
         while True:
@@ -269,20 +290,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": False, "error": "нет id"}, 400)
                 return
             self.board.acks.snooze(item_id, int(hours * 3600), _updated(self.board, item_id))
-            self.board.wake.set()
-            self._json({"ok": True})
+            self.board.reapply_acks()
+            self._json({"ok": True, "summary": self.board.state().get("summary")})
         elif path == "/api/mute":
             item_id = body.get("id")
             if not item_id:
                 self._json({"ok": False, "error": "нет id"}, 400)
                 return
             self.board.acks.mute(item_id, _updated(self.board, item_id))
-            self.board.wake.set()
-            self._json({"ok": True})
+            self.board.reapply_acks()
+            self._json({"ok": True, "summary": self.board.state().get("summary")})
         elif path == "/api/unhide":
             self.board.acks.clear(body.get("id") or "")
-            self.board.wake.set()
-            self._json({"ok": True})
+            self.board.reapply_acks()
+            self._json({"ok": True, "summary": self.board.state().get("summary")})
         elif path == "/api/read":
             # Marking a notification thread read on GitHub, from here, so the
             # inbox and the dashboard do not drift apart.
