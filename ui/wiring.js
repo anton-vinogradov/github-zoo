@@ -8,6 +8,7 @@ function load() {
     render();
     renderFoot();
     showProblems();
+    showWaiting((state.summary || {}).you);
   }).catch(function () {
     toast('дашборд не отвечает', 'warn');
   });

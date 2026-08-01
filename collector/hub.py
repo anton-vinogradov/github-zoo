@@ -334,6 +334,9 @@ class Handler(BaseHTTPRequestHandler):
                 "budget": self.board.client.budget(),
                 "hidden": self.board.acks.snapshot(),
                 "telegram_ready": bool(self.board.alerts.cfg.get("chats")),
+                # So the settings page paints the same favicon as the board:
+                # an icon that changes meaning between pages is worse than none.
+                "summary": self.board.state().get("summary"),
             })
         elif path == "/healthz":
             state = self.board.state()

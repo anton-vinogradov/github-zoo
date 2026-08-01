@@ -54,6 +54,10 @@ waiting on you.
   with no matching item — usually a merged pull request — gets its own section
   instead of disappearing.
 
+The tab icon is the part of this you see most: blue with a tick when
+nothing is waiting on you, amber with the count when something is. The count
+is in the page title too, for a narrowed tab strip.
+
 Anything can be **snoozed** (hidden until a chosen time) or **muted** (hidden
 until it genuinely changes). A snooze is cancelled the moment the item moves,
 so "not now" never becomes "missed it".

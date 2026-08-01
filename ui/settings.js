@@ -14,6 +14,7 @@ function load() {
     config = data;
     pending = {};
     render();
+    showWaiting((config.summary || {}).you);
   }).catch(function () { toast('сервер не отвечает', 'warn'); });
 }
 

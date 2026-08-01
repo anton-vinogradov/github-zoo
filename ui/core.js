@@ -150,6 +150,75 @@ function api(path, body) {
   }).then(function (r) { return r.json(); });
 }
 
+/* ---------- favicon ---------- */
+
+/* The tab is usually in the background, so the icon is the only part of this
+   dashboard most of the day. Blue means nothing is waiting on you; amber means
+   something is, with the count on it — a colour alone tells you to come and
+   look, a number tells you whether it can wait. */
+var FAVICON_IDLE = '#4b8fd9';
+/* Amber rather than yellow: at 16px a pure yellow circle with white on it
+   washes out, especially on a light tab strip. */
+var FAVICON_WAITING = '#e8942a';
+
+function paintFavicon(count) {
+  count = count || 0;
+  if (paintFavicon.last === count) return;
+  paintFavicon.last = count;
+
+  var size = 64;
+  var canvas = document.createElement('canvas');
+  canvas.width = canvas.height = size;
+  var ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  ctx.fillStyle = count ? FAVICON_WAITING : FAVICON_IDLE;
+  ctx.beginPath();
+  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (count) {
+    var label = count > 99 ? '99+' : String(count);
+    /* Three characters need a smaller face to stay inside the circle at the
+       16px the browser actually draws. */
+    ctx.font = 'bold ' + (label.length > 2 ? 30 : 42) + 'px system-ui, sans-serif';
+    ctx.fillText(label, size / 2, size / 2 + 2);
+  } else {
+    // Nothing pending: a tick, which reads at 16px where a glyph would not.
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 7;
+    ctx.lineCap = ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(18, 33);
+    ctx.lineTo(28, 43);
+    ctx.lineTo(46, 22);
+    ctx.stroke();
+  }
+
+  var link = document.querySelector('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  link.type = 'image/png';
+  link.href = canvas.toDataURL('image/png');
+}
+
+/* The same number in the title, so a narrowed tab strip still says it. */
+function setTitle(count) {
+  var base = document.title.replace(/^\(\d+\+?\)\s*/, '');
+  document.title = count ? '(' + (count > 99 ? '99+' : count) + ') ' + base : base;
+}
+
+function showWaiting(count) {
+  paintFavicon(count);
+  setTitle(count);
+}
+
 function toast(text, kind) {
   var box = document.getElementById('alert');
   box.className = 'alert' + (kind ? ' ' + kind : '');
