@@ -9,8 +9,11 @@ var KIND_NAME = { pr: 'PR', issue: 'issue', discussion: 'обсуждение' }
 var GROUPS = [
   { key: 'you', title: 'Твой ход', hint: 'без тебя не сдвинется' },
   { key: 'them', title: 'Ждём других', hint: 'твоя часть сделана' },
-  { key: 'done', title: 'Решено', hint: 'закрыто за последние дни' },
+  /* Open before finished: "Тихо" holds live threads and drafts, "Решено" is
+     history. With fourteen merged cards above it, a post waiting for a reply
+     was two screens down. */
   { key: 'idle', title: 'Тихо', hint: 'черновики и объявления' },
+  { key: 'done', title: 'Решено', hint: 'закрыто за последние дни' },
   { key: 'archive', title: 'Старее месяца', hint: 'порог ignore_days в конфиге' }
 ];
 
@@ -132,7 +135,7 @@ function projects() {
 }
 
 function byGroup(items) {
-  var out = { you: [], them: [], done: [], idle: [], archive: [] };
+  var out = { you: [], them: [], idle: [], done: [], archive: [] };
   items.forEach(function (it) {
     var turn = (it.verdict && it.verdict.turn) || 'idle';
     (out[turn] || out.idle).push(it);

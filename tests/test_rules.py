@@ -252,8 +252,35 @@ def test_question_on_your_repository_with_no_answer():
 
 def test_your_own_announcement_nobody_replied_to_is_idle():
     v = verdict(item(kind="discussion", repo=f"{ME}/tool", id=f"{ME}/tool#d3",
-                     mine=True, author=ME, comments=0))
+                     mine=True, author=ME, comments=0, category="Announcements"))
     assert v["turn"] == rules.IDLE
+
+
+def test_a_post_you_wrote_asking_something_waits_on_them():
+    """A post to the people who forked your project is waiting for a reply.
+
+    It used to land in "quiet" beside a permanent welcome banner, under a
+    fortnight of merged work, which is how it got forgotten.
+    """
+    v = verdict(item(kind="discussion", repo=f"{ME}/tool", id=f"{ME}/tool#d104",
+                     mine=True, author=ME, comments=0, category="General"))
+    assert v["turn"] == rules.THEM
+    assert "no_replies" in codes(v)
+
+
+def test_an_unanswered_post_outranks_quiet_chatter():
+    asking = verdict(item(kind="discussion", mine=True, author=ME, comments=0,
+                          category="General"))
+    watching = verdict(item(kind="discussion", comments=3,
+                            last_comment={"login": "alice", "at": NOW - DAY}))
+    assert asking["priority"] > watching["priority"]
+
+
+def test_a_renamed_announcement_category_is_treated_as_an_ordinary_post():
+    """Safer direction: an extra card beats a silently hidden question."""
+    v = verdict(item(kind="discussion", mine=True, author=ME, comments=0,
+                     category="Новости проекта"))
+    assert v["turn"] == rules.THEM
 
 
 def discussion(**over):

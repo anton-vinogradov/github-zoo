@@ -32,6 +32,12 @@ YOU, THEM, IDLE, ARCHIVE, DONE = "you", "them", "idle", "archive", "done"
 BLOCKING_REVIEW = "CHANGES_REQUESTED"
 APPROVING_REVIEW = "APPROVED"
 
+# Discussion categories whose whole point is that nobody has to answer. Matched
+# by name because the API has no flag for it; a repository that renames the
+# category simply gets its announcements treated as ordinary posts, which is
+# the safer way round.
+ANNOUNCEMENT_CATEGORIES = {"announcements", "announcement", "объявления"}
+
 
 def classify(item: dict, login: str, cfg: dict, now: float) -> dict:
     """Decide the bucket, the reasons for it, and how long it has been so."""
@@ -307,10 +313,20 @@ def _discussion(item: dict, login: str, cfg: dict, now: float) -> dict:
             "watching", f"последним писал {last['login']}{where}", 2)],
             "waiting_since": last.get("at")}
 
-    # Your own announcement that nobody has replied to is not a task.
-    return {"turn": IDLE if item.get("mine") and not item.get("comments")
-            else THEM,
-            "reasons": [_reason("quiet", "тихо", 1)],
+    if item.get("mine") and not item.get("comments"):
+        # Your own thread that nobody has answered yet. An announcement is not
+        # waiting for anything and belongs out of the way; a post asking people
+        # something is waiting for exactly the reply that has not come, and
+        # burying it under a fortnight of merged work is how it gets forgotten.
+        # GitHub exposes no "this is an announcement" flag — `isAnswerable` is
+        # false for General too — so the category name is the only signal.
+        if (item.get("category") or "").strip().lower() in ANNOUNCEMENT_CATEGORIES:
+            return {"turn": IDLE, "reasons": [_reason("announcement", "объявление", 1)],
+                    "waiting_since": item.get("created")}
+        return {"turn": THEM, "reasons": [_reason("no_replies", "ждёшь ответа", 12)],
+                "waiting_since": item.get("created")}
+
+    return {"turn": THEM, "reasons": [_reason("quiet", "тихо", 1)],
             "waiting_since": (last or {}).get("at") or item.get("updated")}
 
 
