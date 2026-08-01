@@ -334,16 +334,19 @@ html, body {
 
 /* ---------- alert ---------- */
 
+/* Neutral by default: this strip carries "saved" as often as it carries a
+   failure, and red for both taught the eye to ignore it. */
 .alert {
   margin: 10px 16px 0;
   padding: 9px 12px;
-  border: 1px solid var(--bad);
+  border: 1px solid var(--accent);
   border-radius: 8px;
   background: var(--bg-card);
-  color: var(--bad);
+  color: var(--accent);
   font-size: 13px;
 }
 .alert.warn { border-color: var(--warn); color: var(--warn); }
+.alert.bad { border-color: var(--bad); color: var(--bad); }
 .hidden { display: none !important; }
 
 .empty {
@@ -445,4 +448,96 @@ a:hover { text-decoration: underline; }
   .actions { width: 100%; justify-content: flex-start; }
   .card { grid-template-columns: auto 1fr; }
   .card .side { grid-column: 2; flex-direction: row; align-items: center; }
+}
+
+/* ---------- settings page ---------- */
+
+.settings { padding: 14px 16px 40px; max-width: 860px; }
+
+.set-section {
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  overflow: hidden;
+}
+.set-section h2 {
+  margin: 0;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-faint);
+  background: var(--bg-sunk);
+  border-bottom: 1px solid var(--line);
+}
+.set-section > .set-hint { padding: 12px 14px; margin: 0; }
+
+.set-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.set-row:last-child { border-bottom: none; }
+/* A value that no longer matches the config should say so without shouting. */
+.set-row.overridden { border-left: 2px solid var(--accent); padding-left: 12px; }
+
+.set-label { flex: 1; min-width: 0; }
+.set-label label { font-size: 14px; cursor: pointer; overflow-wrap: anywhere; }
+.set-hint {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
+.set-control { display: flex; align-items: center; gap: 7px; flex-shrink: 0; }
+.set-unit { font-size: 12px; color: var(--text-faint); }
+
+.set-input {
+  width: 90px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+}
+.set-input:focus { outline: none; border-color: var(--accent); }
+
+.set-toggle { position: relative; display: inline-block; width: 40px; height: 22px; }
+.set-toggle input { opacity: 0; width: 0; height: 0; }
+.set-slider {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background: var(--bg-sunk);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.set-slider::before {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  left: 2px;
+  top: 2px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  transition: transform .12s, background .12s;
+}
+.set-toggle input:checked + .set-slider { background: var(--accent); border-color: var(--accent); }
+.set-toggle input:checked + .set-slider::before { transform: translateX(18px); background: #fff; }
+
+.btn-primary { border-color: var(--accent); color: var(--accent); }
+
+@media (max-width: 560px) {
+  .set-row { flex-direction: column; gap: 8px; }
+  .set-control { align-self: flex-start; }
 }

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>github-zoo — настройки</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🐙</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🐙</span>
+    <div>
+      <h1>Настройки</h1>
+      <p class="sub" id="subtitle">загрузка…</p>
+    </div>
+  </div>
+  <div class="actions">
+    <button id="btn-selftest" class="btn" title="Проверить токен, Telegram и хранилище">Проверка связи</button>
+    <button id="btn-reset" class="btn" title="Убрать все переопределения и вернуться к конфигу">Сбросить</button>
+    <a class="btn btn-primary" href="/">← к доске</a>
+    <button id="btn-theme" class="btn btn-icon" title="Тема">◐</button>
+  </div>
+</header>
+
+<div id="alert" class="alert hidden"></div>
+
+<main id="settings" class="settings"></main>
+
+<footer class="foot">
+  <span id="foot-note"></span>
+</footer>
+
+<script src="ui/core.js"></script>
+<script src="ui/settings.js"></script>
+</body>
+</html>

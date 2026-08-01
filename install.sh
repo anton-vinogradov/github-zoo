@@ -36,7 +36,8 @@ command -v python3 >/dev/null || { echo "✗ нужен python3"; exit 1; }
 if [ "$SRC" != "$DIR" ]; then
   echo "→ ставлю в $DIR"
   $SUDO mkdir -p "$DIR"
-  $SUDO cp -r "$SRC/collector" "$SRC/ui" "$SRC/index.html" "$SRC/style.css" "$DIR/"
+  $SUDO cp -r "$SRC/collector" "$SRC/ui" "$SRC/index.html" "$SRC/settings.html" \
+      "$SRC/style.css" "$DIR/"
 fi
 $SUDO chown -R "$RUN_USER": "$DIR"
 

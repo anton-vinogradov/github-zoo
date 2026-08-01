@@ -16,13 +16,19 @@ function load() {
 function showProblems() {
   var box = document.getElementById('alert');
   var problems = [];
-  if (state.error) problems.push(state.error);
+  var age = Date.now() / 1000 - (state.generated || 0);
+
+  /* An error on its own does not say whether what you are looking at is a
+     minute or a day old — which is the only thing that decides whether it
+     matters. GitHub answers 503 often enough that a stale banner over fresh
+     data was the usual case. */
+  if (state.error) {
+    problems.push(state.error + (state.generated
+      ? ' · данные от ' + ago(state.generated) : ''));
+  }
   (state.warnings || []).forEach(function (w) { problems.push(w); });
 
-  /* An hour-old snapshot still renders, and looks exactly like a fresh one
-     unless it says so. */
-  var age = Date.now() / 1000 - (state.generated || 0);
-  if (state.generated && age > 3600) {
+  if (!state.error && state.generated && age > 3600) {
     problems.push('данные устарели: последний удачный опрос ' + ago(state.generated));
   }
   var budget = state.budget || {};
@@ -31,7 +37,7 @@ function showProblems() {
   }
 
   if (!problems.length) { box.classList.add('hidden'); return; }
-  box.className = 'alert' + (state.error ? '' : ' warn');
+  box.className = 'alert ' + (state.error ? 'bad' : 'warn');
   box.textContent = problems.join(' · ');
 }
 

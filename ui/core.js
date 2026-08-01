@@ -152,7 +152,7 @@ function api(path, body) {
 
 function toast(text, kind) {
   var box = document.getElementById('alert');
-  box.className = 'alert' + (kind === 'warn' ? ' warn' : '');
+  box.className = 'alert' + (kind ? ' ' + kind : '');
   box.textContent = text;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(function () { box.classList.add('hidden'); }, 6000);

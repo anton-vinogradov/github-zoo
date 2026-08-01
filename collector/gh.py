@@ -26,6 +26,12 @@ import urllib.request
 API = "https://api.github.com"
 UA = "github-zoo (+https://github.com/anton-vinogradov/github-zoo)"
 
+# GitHub hands out these on its own schedule — the search API especially, which
+# answers 503 often enough that treating one as a failed poll painted the board
+# red for the whole interval. They mean "ask again", so we do.
+RETRY_STATUSES = {500, 502, 503, 504}
+RETRY_DELAYS = (2, 6, 15)
+
 
 class RateLimited(Exception):
     """Raised when GitHub asks us to wait, carrying how long it wants."""
@@ -65,11 +71,40 @@ class Client:
         # call is honoured by all of them.
         self.blocked_until = 0.0
         self.calls = 0
+        # How often GitHub made us ask twice — worth seeing on the dashboard
+        # when polls start taking longer than they should.
+        self.retries = 0
 
     # ---------- transport ----------
 
     def _request(self, method: str, url: str, body: bytes | None = None,
                  headers: dict | None = None) -> tuple[int, dict, bytes]:
+        """One request, retried through GitHub's own bad minutes.
+
+        A 503 from the search API is routine and means nothing more than "ask
+        again"; before this, one of them failed the whole poll and left an
+        error banner up for the entire interval.
+        """
+        last: Exception | None = None
+        for delay in RETRY_DELAYS + (None,):
+            try:
+                return self._request_once(method, url, body, headers)
+            except urllib.error.HTTPError as err:
+                if err.code not in RETRY_STATUSES or delay is None:
+                    raise
+                last = err
+            except (urllib.error.URLError, TimeoutError, OSError) as err:
+                # A dropped connection or a DNS blip is the same kind of
+                # "not now" as a 503, and just as worth one more try.
+                if delay is None:
+                    raise
+                last = err
+            self.retries += 1
+            time.sleep(delay)
+        raise last  # unreachable: the last pass either returns or raises
+
+    def _request_once(self, method: str, url: str, body: bytes | None = None,
+                      headers: dict | None = None) -> tuple[int, dict, bytes]:
         wait = self.blocked_until - time.time()
         if wait > 0:
             raise RateLimited(wait, "waiting out a secondary rate limit")
@@ -224,6 +259,7 @@ class Client:
             out = dict(self.limit)
         out["blocked_for"] = max(0, self.blocked_until - time.time())
         out["calls"] = self.calls
+        out["retries"] = self.retries
         return out
 
     def check(self) -> tuple[bool, str]:

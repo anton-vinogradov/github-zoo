@@ -115,8 +115,16 @@ roughly 1% of the budget.
 
 ## Configuration
 
-`/etc/github-zoo.json`, created from `collector/config.example.json`, which
-documents every field inline. The ones worth knowing:
+Thresholds are on the **settings page** — `/settings`, linked from the header.
+Changing one recomputes the board immediately, because a threshold is a
+question about the cards already collected rather than about GitHub. Bounds are
+enforced on the server; a page cannot be trusted to be the thing enforcing
+them. Overrides live in their own file and never rewrite the config, so
+"Сбросить" always gets you back.
+
+Everything the page must not touch — the token, the Telegram chat, the paths —
+stays in `/etc/github-zoo.json`, created from `collector/config.example.json`,
+which documents every field inline. The ones worth knowing:
 
 | field | default | meaning |
 | --- | --- | --- |

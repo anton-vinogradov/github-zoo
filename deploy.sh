@@ -47,7 +47,7 @@ echo "== выкладываю на $HOST:$DIR"
 # The paths expand here on purpose: they name a directory on that host, and
 # this side is the only one that knows which host was asked for.
 # shellcheck disable=SC2029
-tar czf - collector ui index.html style.css install.sh \
+tar czf - collector ui index.html settings.html style.css install.sh \
   --exclude='collector/config.json' --exclude='__pycache__' \
   | ssh "$HOST" "tar xzf - -C '$DIR'"
 # shellcheck disable=SC2029

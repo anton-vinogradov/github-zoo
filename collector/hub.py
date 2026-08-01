@@ -17,6 +17,7 @@ import sys
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +29,7 @@ import collect  # noqa: E402
 import gh  # noqa: E402
 import rules  # noqa: E402
 import secrets  # noqa: E402
+import settings as settings_mod  # noqa: E402
 import store as store_mod  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -45,6 +47,9 @@ STATIC_FILES = {
     "/ui/cards.js": ("ui/cards.js", "application/javascript; charset=utf-8"),
     "/ui/details.js": ("ui/details.js", "application/javascript; charset=utf-8"),
     "/ui/wiring.js": ("ui/wiring.js", "application/javascript; charset=utf-8"),
+    "/settings": ("settings.html", "text/html; charset=utf-8"),
+    "/settings.html": ("settings.html", "text/html; charset=utf-8"),
+    "/ui/settings.js": ("ui/settings.js", "application/javascript; charset=utf-8"),
 }
 
 
@@ -90,6 +95,10 @@ class Board:
         self.store = store_mod.Store(cfg.get("history_db", "/var/lib/github-zoo/history.db"),
                                      cfg.get("history_retention_days", 180))
         self.acks = acks_mod.Acks(cfg.get("acks_file", "/var/lib/github-zoo/acks.json"))
+        self.settings = settings_mod.Settings(
+            cfg.get("settings_file", "/var/lib/github-zoo/settings.json"))
+        # Applied before anything reads a threshold, including Alerts below.
+        self.settings.apply_to(cfg)
         self.alerts = alerts_mod.Alerts(cfg)
         self.version = read_version()
 
@@ -161,17 +170,57 @@ class Board:
                 traceback.print_exc()
 
         except gh.RateLimited as err:
-            error = f"GitHub просит подождать {err.retry_after:.0f}с"
+            error = f"GitHub просит подождать {err.retry_after:.0f} с — лимит запросов"
+        except urllib.error.HTTPError as err:
+            # After the retries in gh.py, a 5xx here means GitHub was down for
+            # the better part of a minute — worth saying plainly, and worth
+            # naming as temporary so it does not read as a broken dashboard.
+            if err.code in gh.RETRY_STATUSES:
+                error = f"GitHub временно недоступен (HTTP {err.code}), пробую снова"
+            elif err.code == 401:
+                error = "GitHub отверг токен (401) — истёк или отозван"
+            else:
+                error = f"GitHub ответил HTTP {err.code}"
+        except OSError as err:
+            error = f"сеть недоступна: {err}"
         except Exception as err:  # noqa: BLE001
             error = f"{type(err).__name__}: {err}"
             traceback.print_exc()
 
         if error:
             # Keep the last good snapshot on screen and say what went wrong,
-            # rather than replacing real data with an error page.
+            # rather than replacing real data with an error page. The time of
+            # the last success travels with it: "503" alone does not say
+            # whether what is on screen is a minute or a day old.
             with self.lock:
                 self.snapshot = dict(self.snapshot, polling=False, error=error,
-                                     checked=time.time())
+                                     error_at=time.time(), checked=time.time())
+
+    def reclassify(self) -> None:
+        """Re-run the rules over the snapshot in hand.
+
+        Changing a threshold is a question about the cards already collected,
+        not about GitHub. Without this, moving `ignore_days` did nothing
+        visible until the next poll, which is exactly long enough to conclude
+        the setting is broken and change it again.
+        """
+        with self.lock:
+            snapshot = self.snapshot
+            items = snapshot.get("items") or []
+            if not items:
+                return
+            now = time.time()
+            for item in items:
+                item["verdict"] = rules.classify(item, self.login, self.cfg, now)
+                since = item.get("turn_since")
+                if since:
+                    item["verdict"]["waiting_since"] = since
+                    item["verdict"]["waiting_days"] = max(0.0, (now - since) / 86400.0)
+            items.sort(key=lambda i: -(i["verdict"]["priority"]))
+            hidden = self.acks.apply(items, now)
+            summary = rules.summarise([i for i in items if not i.get("hidden")])
+            summary["hidden"] = hidden
+            self.snapshot = dict(snapshot, items=items, summary=summary)
 
     def reapply_acks(self) -> None:
         """Re-hide and recount on the snapshot already in hand.
@@ -195,10 +244,11 @@ class Board:
             self.snapshot = dict(snapshot, items=items, summary=summary)
 
     def loop(self) -> None:
-        interval = int(self.cfg.get("poll_seconds", 300))
         while True:
             self.poll_once()
-            self.wake.wait(timeout=interval)
+            # Re-read every time: a new interval from the settings page should
+            # not need a restart to take hold.
+            self.wake.wait(timeout=int(self.cfg.get("poll_seconds", 300)))
             self.wake.clear()
 
     def state(self) -> dict:
@@ -269,6 +319,17 @@ class Handler(BaseHTTPRequestHandler):
                         "budget": self.board.client.budget(),
                         "store": {"ok": self.board.store.ok},
                         "config": self.board.cfg.get("_path", "")})
+        elif path == "/api/settings":
+            self._json({
+                "schema": settings_mod.SCHEMA,
+                "values": self.board.settings.current(self.board.cfg),
+                "overridden": sorted(self.board.settings.values),
+                "config_path": self.board.cfg.get("_path", ""),
+                "version": self.board.version,
+                "budget": self.board.client.budget(),
+                "hidden": self.board.acks.snapshot(),
+                "telegram_ready": bool(self.board.alerts.cfg.get("chats")),
+            })
         elif path == "/healthz":
             state = self.board.state()
             fresh = time.time() - (state.get("generated") or 0) < 3600
@@ -316,6 +377,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._json({"ok": True})
             except Exception as err:  # noqa: BLE001
                 self._json({"ok": False, "error": str(err)}, 502)
+        elif path == "/api/settings":
+            applied, rejected = self.board.settings.update(
+                body.get("values") or {}, self.board.cfg)
+            # Thresholds change what the cards already collected mean, so the
+            # board is recomputed here; only a changed poll interval or a new
+            # search needs GitHub, and that happens on the next cycle anyway.
+            if applied:
+                self.board.reclassify()
+            self._json({"ok": not rejected, "applied": applied,
+                        "rejected": rejected,
+                        "values": self.board.settings.current(self.board.cfg),
+                        "summary": self.board.state().get("summary")})
+        elif path == "/api/settings/reset":
+            self.board.settings.reset(self.board.cfg)
+            # The config is the floor: dropping overrides means re-reading it.
+            fresh = load_config()
+            self.board.cfg.clear()
+            self.board.cfg.update(fresh)
+            self.board.reclassify()
+            self._json({"ok": True,
+                        "values": self.board.settings.current(self.board.cfg)})
         elif path == "/api/alerts/test":
             ok, message = self.board.alerts.test()
             self._json({"ok": ok, "message": message})
