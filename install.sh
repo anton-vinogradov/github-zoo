@@ -40,6 +40,16 @@ if [ "$SRC" != "$DIR" ]; then
 fi
 $SUDO chown -R "$RUN_USER": "$DIR"
 
+# What is actually running, for the dashboard footer. deploy.sh writes the same
+# file from a working copy; without this, an install straight from git shows
+# "unknown" and there is no way to tell prod from the repository.
+if [ -d "$DIR/.git" ] && command -v git >/dev/null; then
+  commit="$(git -C "$DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  printf '%s\n%s\n' "$commit" "$(date +%Y-%m-%dT%H:%M:%S%z)" \
+    | $SUDO tee "$DIR/VERSION" >/dev/null
+  $SUDO chown "$RUN_USER": "$DIR/VERSION"
+fi
+
 $SUDO mkdir -p "$STATE" /etc/github-zoo.d
 $SUDO chown "$RUN_USER": "$STATE"
 $SUDO chmod 750 /etc/github-zoo.d

@@ -80,11 +80,15 @@ class Store:
             with self.lock, self._db() as db:
                 db.execute("INSERT OR REPLACE INTO snapshots (ts, body) VALUES (?, ?)",
                            (int(snapshot.get("generated") or time.time()), body))
-                # Snapshots are for restart recovery and the change feed, not
-                # for a time series; a day of them is plenty and the file stays
-                # small enough to back up.
-                db.execute("DELETE FROM snapshots WHERE ts < ?",
-                           (int(time.time() - 86400),))
+                # Only the newest snapshot is ever read — it exists so a restart
+                # shows the board immediately instead of an empty page. A full
+                # snapshot is ~140 KB, so keeping a day of them at one every
+                # five minutes meant a 40 MB database holding 287 copies nobody
+                # would ever look at. Two spares are for the case where the
+                # newest one is truncated by a crash mid-write.
+                db.execute(
+                    "DELETE FROM snapshots WHERE ts NOT IN "
+                    "(SELECT ts FROM snapshots ORDER BY ts DESC LIMIT 3)")
                 db.execute("DELETE FROM events WHERE ts < ?", (cutoff,))
         except sqlite3.Error:
             pass
