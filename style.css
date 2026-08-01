@@ -1,0 +1,397 @@
+/* github-zoo — one board for everything open that involves you.
+   Dark by default, light on request. No frameworks, no build step: the hub
+   serves these files as they are. */
+
+:root {
+  --bg: #0f1216;
+  --bg-raise: #171b21;
+  --bg-card: #1b2028;
+  --bg-sunk: #12161b;
+  --line: #2a313b;
+  --text: #e6e9ee;
+  --text-dim: #99a3b1;
+  --text-faint: #6b7684;
+  --you: #d9773f;
+  --them: #4b8fd9;
+  --idle: #6b7684;
+  --ok: #4ba86a;
+  --bad: #d95757;
+  --warn: #d9a441;
+  --accent: #5b9dd9;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  --radius: 10px;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f6f8;
+  --bg-raise: #ffffff;
+  --bg-card: #ffffff;
+  --bg-sunk: #eef1f5;
+  --line: #dde2e8;
+  --text: #1b2028;
+  --text-dim: #5a6472;
+  --text-faint: #8b95a3;
+  --you: #c25a1f;
+  --shadow: 0 1px 3px rgba(16, 22, 30, .12);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  /* Nothing here scrolls sideways; wide content gets its own scroller. */
+  overflow-x: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* ---------- top bar ---------- */
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 16px;
+  padding-top: max(10px, env(safe-area-inset-top));
+  background: var(--bg-raise);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.logo { font-size: 22px; line-height: 1; }
+/* The title and the counts are one line each or they are unreadable: at an
+   in-between width the flex row was squeezing "github-zoo" into two lines and
+   the summary into a nine-line column. */
+.topbar h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: .2px; white-space: nowrap; }
+.sub {
+  margin: 1px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.actions { display: flex; gap: 8px; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; }
+
+.btn {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .12s, background .12s;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--accent); }
+.btn.on { border-color: var(--accent); color: var(--accent); }
+.btn-icon { padding: 7px 10px; }
+.btn-small { padding: 4px 9px; font-size: 12px; }
+
+.search {
+  width: 200px;
+  padding: 7px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
+
+/* ---------- filters ---------- */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 16px 0;
+}
+
+.chip {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--bg-card);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.chip:hover { border-color: var(--accent); }
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--bg-raise); }
+.chip .n { color: var(--text-faint); margin-left: 4px; }
+
+/* ---------- board ---------- */
+
+.board { padding: 12px 16px 40px; }
+
+.group { margin-bottom: 22px; }
+
+.group-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 0 8px;
+  cursor: pointer;
+  user-select: none;
+}
+.group-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.group-head .count { color: var(--text-faint); font-size: 13px; }
+.group-head .hint { color: var(--text-faint); font-size: 12px; margin-left: auto; }
+.group-head .caret { color: var(--text-faint); font-size: 11px; }
+
+.group.you .group-head h2 { color: var(--you); }
+.group.them .group-head h2 { color: var(--them); }
+.group.idle .group-head h2,
+.group.archive .group-head h2 { color: var(--idle); }
+
+.cards { display: grid; gap: 8px; }
+
+/* ---------- card ---------- */
+
+.card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: border-color .12s;
+}
+.card:hover { border-color: var(--accent); }
+.card.you { border-left-color: var(--you); }
+.card.them { border-left-color: var(--them); }
+.card.idle, .card.archive { border-left-color: var(--idle); opacity: .75; }
+.card.hidden-item { opacity: .5; }
+
+.card .kind { font-size: 16px; line-height: 1.3; }
+
+.card .main { min-width: 0; }
+
+.card .where {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.card .repo { font-family: var(--mono); }
+.card .num { color: var(--text-faint); font-family: var(--mono); }
+
+.card .title {
+  margin: 2px 0 0;
+  font-size: 14px;
+  font-weight: 500;
+  /* Long upstream titles must not push the age column off the card. */
+  overflow-wrap: anywhere;
+}
+
+.card .why {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 5px;
+}
+
+.reason {
+  padding: 2px 7px;
+  border-radius: 5px;
+  background: var(--bg-sunk);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+.reason.hot { color: var(--you); }
+.reason.bad { color: var(--bad); }
+.reason.good { color: var(--ok); }
+
+.card .side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.card .age.stale { color: var(--warn); }
+.card .age.rotting { color: var(--text-faint); }
+
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
+.dot.ok { background: var(--ok); }
+.dot.bad { background: var(--bad); }
+.dot.warn { background: var(--warn); }
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 20px;
+  background: var(--you);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.label {
+  padding: 1px 7px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* Per-card buttons are noise on a board of thirty items: they triple the row
+   height and are wanted about once a session. On a pointer device they appear
+   on hover; where there is no hover they are simply always there. */
+.row-actions { display: flex; gap: 4px; margin-top: 6px; }
+
+@media (hover: hover) and (min-width: 901px) {
+  .card .row-actions {
+    margin-top: 0;
+    max-height: 0;
+    overflow: hidden;
+    opacity: 0;
+    transition: max-height .12s ease, opacity .12s ease, margin-top .12s ease;
+  }
+  .card:hover .row-actions,
+  .card:focus-within .row-actions {
+    max-height: 40px;
+    margin-top: 6px;
+    opacity: 1;
+  }
+}
+
+.modal .row-actions { max-height: none; opacity: 1; margin-top: 6px; }
+
+/* ---------- alert ---------- */
+
+.alert {
+  margin: 10px 16px 0;
+  padding: 9px 12px;
+  border: 1px solid var(--bad);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--bad);
+  font-size: 13px;
+}
+.alert.warn { border-color: var(--warn); color: var(--warn); }
+.hidden { display: none !important; }
+
+.empty {
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--text-faint);
+  text-align: center;
+  font-size: 13px;
+}
+
+/* ---------- footer ---------- */
+
+.foot {
+  padding: 0 16px 24px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+/* ---------- modal ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 12px;
+  background: rgba(0, 0, 0, .55);
+  overflow-y: auto;
+}
+
+.modal-card {
+  width: min(860px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg-raise);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .4);
+}
+
+.modal-head {
+  position: sticky;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--bg-raise);
+  border-bottom: 1px solid var(--line);
+  border-radius: 12px 12px 0 0;
+}
+.modal-head h2 { margin: 0; font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.modal-body { padding: 14px; }
+
+.section { margin-bottom: 16px; }
+.section h3 {
+  margin: 0 0 7px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: var(--text-faint);
+}
+
+.thread {
+  padding: 9px 11px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-card);
+}
+.thread.mine-turn { border-color: var(--you); }
+.thread .path { font-family: var(--mono); font-size: 12px; color: var(--text-dim); overflow-wrap: anywhere; }
+.thread .excerpt {
+  margin: 5px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.thread .meta { margin-top: 5px; font-size: 12px; color: var(--text-faint); }
+
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
+.kv dt { color: var(--text-faint); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.checks { display: flex; flex-wrap: wrap; gap: 5px; }
+
+.mono { font-family: var(--mono); font-size: 12px; }
+
+@media (max-width: 900px) {
+  .topbar { flex-wrap: wrap; }
+  .search { width: 100%; order: 3; }
+  .actions { width: 100%; justify-content: flex-start; }
+  .card { grid-template-columns: auto 1fr; }
+  .card .side { grid-column: 2; flex-direction: row; align-items: center; }
+}

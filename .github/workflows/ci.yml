@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    name: rules and parsers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pytest
+        run: pip install pytest
+      - name: Run tests
+        run: python -m pytest tests/ -v
+      - name: Byte-compile the collector
+        run: python -m compileall -q collector
+
+  shell:
+    name: installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+      - name: Lint
+        run: shellcheck --shell=bash install.sh deploy.sh
+
+  secrets:
+    name: no secrets, no addresses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate the example config
+        run: python -c "import json; json.load(open('collector/config.example.json'))"
+      - name: Nothing that belongs on a host may be committed
+        run: |
+          # This repository is public. Real addresses live only in
+          # /etc/github-zoo.json, and tokens only in systemd credentials —
+          # a leak here is a leak forever, so it fails the build.
+          fail=0
+          if grep -rEn '10\.(88|77|66|67)\.[0-9]+\.[0-9]+' \
+              --include='*.py' --include='*.js' --include='*.sh' \
+              --include='*.json' --include='*.md' --include='*.yml' . ; then
+            echo "::error::a real address is committed"; fail=1
+          fi
+          # GitHub tokens (ghp_/gho_/github_pat_) and Telegram bot tokens.
+          if grep -rEn '(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{50,}|[0-9]{8,10}:AA[A-Za-z0-9_-]{30,})' \
+              --include='*.py' --include='*.js' --include='*.sh' \
+              --include='*.json' --include='*.md' --include='*.yml' . ; then
+            echo "::error::a token is committed"; fail=1
+          fi
+          exit $fail

@@ -1,0 +1,52 @@
+{
+  "_comment": "Скопируйте в /etc/github-zoo.json и отредактируйте. Токен в этот файл класть не надо — см. token_credential ниже.",
+
+  "login": "",
+  "_login": "Ваш логин на GitHub. Пусто — определится по токену.",
+
+  "bind": "0.0.0.0",
+  "port": 8817,
+  "poll_seconds": 300,
+  "_poll_seconds": "GraphQL тарифицируется по узлам: полный опрос ~30 PR стоит ~60 из 5000 в час, но детали тянутся только для изменившихся, поэтому обычный цикл почти бесплатный. 300 с — с большим запасом.",
+
+  "token_credential": "github-token",
+  "_token": "Три источника, в порядке предпочтения: token_credential (systemd-creds, ничего читаемого на диске), token_file (путь), token (открытым текстом). На ноутбуке можно не задавать ничего — возьмётся из gh CLI.",
+  "token_from_gh_cli": true,
+
+  "stale_days": 14,
+  "_stale_days": "Сколько дней твой ход может ждать, прежде чем это назовут «залежалось».",
+  "rot_days": 30,
+  "_rot_days": "То же для чужого хода: столько дней без ответа — повод пнуть.",
+  "unreviewed_days": 3,
+  "_unreviewed_days": "Свой PR без единого ревьюера дольше этого — повод попросить ревью.",
+
+  "detail_batch": 15,
+  "http_timeout": 45,
+
+  "notifications_include_ci": false,
+  "_notifications_include_ci": "true вернёт в ленту ci_activity. На активном апстриме это 200 уведомлений из 280 — включать стоит только чтобы что-то поискать.",
+
+  "discussion_repos": [],
+  "_discussion_repos": "Пусто — возьмутся все ваши репозитории с включёнными Discussions. Список здесь переопределяет автоопределение.",
+
+  "extra_searches": [],
+  "_extra_searches": "Произвольные строки поиска GitHub, добавляются к стандартным. Пример: \"org:apache is:open label:ise\".",
+
+  "history_db": "/var/lib/github-zoo/history.db",
+  "acks_file": "/var/lib/github-zoo/acks.json",
+  "history_retention_days": 180,
+
+  "telegram": {
+    "enabled": false,
+    "token_credential": "telegram-token",
+    "chats": [],
+    "_chats": "ID чатов. Свой можно узнать, написав боту, а затем: curl -s https://api.telegram.org/bot<TOKEN>/getUpdates",
+    "telegram_bin": "/opt/telegram.sh-repo/telegram",
+    "spool": "/var/lib/github-zoo/tg-queue",
+    "_spool": "Очередь telegram.sh: сообщение переживёт недоступность Telegram.",
+    "dashboard_url": "",
+    "digest_hour": 10,
+    "_digest_hour": "Час, когда приходит напоминание о том, что всё ещё ждёт хода.",
+    "state_file": "/var/lib/github-zoo/alerts-state.json"
+  }
+}

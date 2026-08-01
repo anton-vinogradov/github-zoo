@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>github-zoo</title>
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><text y='14' font-size='14'>🐙</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🐙</span>
+    <div>
+      <h1>github-zoo</h1>
+      <p class="sub" id="summary">загрузка…</p>
+    </div>
+  </div>
+  <div class="actions">
+    <input id="search" class="search" type="search" placeholder="поиск" autocomplete="off">
+    <button id="btn-unread" class="btn" title="Только с непрочитанным в инбоксе">Непрочитанное</button>
+    <button id="btn-hidden" class="btn" title="Показать отложенное и заглушённое">Отложенное</button>
+    <button id="btn-refresh" class="btn" title="Опросить GitHub заново">Обновить</button>
+    <button id="btn-theme" class="btn btn-icon" title="Тема">◐</button>
+  </div>
+</header>
+
+<div id="alert" class="alert hidden"></div>
+
+<nav class="filters" id="filters"></nav>
+
+<main id="board" class="board"></main>
+
+<footer class="foot">
+  <span id="foot-note"></span>
+</footer>
+
+<div id="modal" class="modal hidden">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2 id="modal-title"></h2>
+      <button class="btn btn-icon" data-close>✕</button>
+    </header>
+    <div id="modal-body" class="modal-body"></div>
+  </div>
+</div>
+
+<script src="ui/core.js"></script>
+<script src="ui/cards.js"></script>
+<script src="ui/details.js"></script>
+<script src="ui/wiring.js"></script>
+</body>
+</html>
