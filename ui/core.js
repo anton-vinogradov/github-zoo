@@ -152,14 +152,20 @@ function api(path, body) {
 
 /* ---------- favicon ---------- */
 
-/* The tab is usually in the background, so the icon is the only part of this
-   dashboard most of the day. Blue means nothing is waiting on you; amber means
-   something is, with the count on it — a colour alone tells you to come and
-   look, a number tells you whether it can wait. */
+/* The tab sits in the background most of the day, so this icon is the part of
+   the dashboard actually being looked at. It stays the octopus — that is what
+   the tab is recognised by — and only changes colour: blue when nothing is
+   waiting on you, orange when something is.
+
+   The octopus is the emoji glyph with a flat colour composited through it
+   (`source-in` keeps the fill only where the glyph is opaque). Drawing one by
+   hand was tried and came out looking like a ghost; the real glyph still reads
+   as an octopus at the 16px a browser draws. */
 var FAVICON_IDLE = '#4b8fd9';
-/* Amber rather than yellow: at 16px a pure yellow circle with white on it
-   washes out, especially on a light tab strip. */
+/* Amber-orange rather than pure yellow: at 16px, on a light tab strip, yellow
+   washes out into the background. */
 var FAVICON_WAITING = '#e8942a';
+var FAVICON_FONT = '"Apple Color Emoji","Noto Color Emoji","Segoe UI Emoji",sans-serif';
 
 function paintFavicon(count) {
   count = count || 0;
@@ -171,31 +177,24 @@ function paintFavicon(count) {
   canvas.width = canvas.height = size;
   var ctx = canvas.getContext('2d');
   if (!ctx) return;
+  var colour = count ? FAVICON_WAITING : FAVICON_IDLE;
 
-  ctx.fillStyle = count ? FAVICON_WAITING : FAVICON_IDLE;
-  ctx.beginPath();
-  ctx.arc(size / 2, size / 2, size / 2 - 1, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = '#fff';
+  ctx.font = Math.round(size * 0.86) + 'px ' + FAVICON_FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  if (count) {
-    var label = count > 99 ? '99+' : String(count);
-    /* Three characters need a smaller face to stay inside the circle at the
-       16px the browser actually draws. */
-    ctx.font = 'bold ' + (label.length > 2 ? 30 : 42) + 'px system-ui, sans-serif';
-    ctx.fillText(label, size / 2, size / 2 + 2);
-  } else {
-    // Nothing pending: a tick, which reads at 16px where a glyph would not.
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 7;
-    ctx.lineCap = ctx.lineJoin = 'round';
+  ctx.fillText('🐙', size / 2, size / 2 + size * 0.04);
+  ctx.globalCompositeOperation = 'source-in';
+  ctx.fillStyle = colour;
+  ctx.fillRect(0, 0, size, size);
+  ctx.globalCompositeOperation = 'source-over';
+
+  // A machine with no emoji font draws nothing at all, and an invisible icon
+  // says less than a plain dot. Check rather than assume.
+  if (!_hasInk(ctx, size)) {
+    ctx.fillStyle = colour;
     ctx.beginPath();
-    ctx.moveTo(18, 33);
-    ctx.lineTo(28, 43);
-    ctx.lineTo(46, 22);
-    ctx.stroke();
+    ctx.arc(size / 2, size / 2, size / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   var link = document.querySelector('link[rel="icon"]');
@@ -206,6 +205,18 @@ function paintFavicon(count) {
   }
   link.type = 'image/png';
   link.href = canvas.toDataURL('image/png');
+}
+
+function _hasInk(ctx, size) {
+  try {
+    var data = ctx.getImageData(0, 0, size, size).data;
+    for (var i = 3; i < data.length; i += 4) {
+      if (data[i] > 0) return true;
+    }
+  } catch (err) {
+    return true;  // canvas locked down: assume it drew, rather than replacing it
+  }
+  return false;
 }
 
 /* The same number in the title, so a narrowed tab strip still says it. */
