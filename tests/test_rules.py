@@ -268,12 +268,14 @@ def test_a_post_you_wrote_asking_something_waits_on_them():
     assert "no_replies" in codes(v)
 
 
-def test_an_unanswered_post_outranks_quiet_chatter():
+def test_an_unanswered_post_outranks_equally_old_chatter():
+    """Weight only separates items of the same age — time comes first."""
     asking = verdict(item(kind="discussion", mine=True, author=ME, comments=0,
-                          category="General"))
+                          category="General", created=NOW - DAY))
     watching = verdict(item(kind="discussion", comments=3,
                             last_comment={"login": "alice", "at": NOW - DAY}))
     assert asking["priority"] > watching["priority"]
+    assert abs(asking["priority"] - watching["priority"]) < 1
 
 
 def test_a_renamed_announcement_category_is_treated_as_an_ordinary_post():
@@ -444,12 +446,12 @@ def test_a_fresh_request_outranks_an_old_nag():
     assert fresh["priority"] > old_nag["priority"]
 
 
-def test_waiting_on_them_is_ordered_by_age_alone():
-    """The board showed 21, 16, 15, 16, 15 days in that order.
+def test_waiting_on_them_is_ordered_by_time_alone():
+    """The board showed 21, 16, 15, 16, 15 days — sixteen below fifteen.
 
-    Nothing in this bucket is yours to do, so what it is barely matters and how
-    long it has sat is the whole signal; mixing the two gave an order that was
-    neither one nor the other.
+    Nothing in this bucket is yours to do, so what each item is barely matters
+    and time is the whole signal; mixing the two gave an order that was neither.
+    Newest first, like the project tabs.
     """
     def waited(days, **over):
         return verdict(item(mine=True, author=ME, review_requests=["r"],
@@ -458,7 +460,7 @@ def test_waiting_on_them_is_ordered_by_age_alone():
 
     ages = [21, 16, 15, 3, 1]
     scored = [(d, waited(d)["priority"]) for d in ages]
-    assert [d for d, _ in sorted(scored, key=lambda p: -p[1])] == ages
+    assert [d for d, _ in sorted(scored, key=lambda p: -p[1])] == [1, 3, 15, 16, 21]
 
 
 def test_the_reason_only_breaks_ties_between_equal_ages():

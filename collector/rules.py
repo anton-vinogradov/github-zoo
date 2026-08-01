@@ -359,12 +359,12 @@ def _priority(item: dict, verdict: dict, cfg: dict) -> float:
     base = max((r.get("weight", 0) for r in verdict.get("reasons") or []), default=0)
     turn = verdict["turn"]
     if turn == THEM:
-        # Nothing here is yours to do, so *what* it is barely matters and how
-        # long it has sat is the whole signal. Mixing the two produced an order
-        # that was neither: sixteen days below fifteen because one said "ждёт
-        # ревью" and the other "ждёшь ответа". Age decides; the reason breaks
-        # ties between items of the same age.
-        return round(min(verdict.get("waiting_days", 0), 3650) + base / 100.0, 2)
+        # Nothing here is yours to do, so *what* it is barely matters and the
+        # order is by time alone — mixing in the reason gave sixteen days below
+        # fifteen. Newest first, like the project tabs: this bucket is read to
+        # see what moved, not to be nagged, and anything genuinely rotting is
+        # flagged as such rather than pushed to the top.
+        return round(-min(verdict.get("waiting_days", 0), 3650) + base / 100.0, 2)
     if turn == YOU:
         base += 20
     elif turn == DONE:
