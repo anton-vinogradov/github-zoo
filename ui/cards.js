@@ -2,18 +2,95 @@
 
 'use strict';
 
+function renderTabs() {
+  var box = document.getElementById('tabs');
+  box.textContent = '';
+  if (!state || !state.items) return;
+
+  var all = projects();
+  if (!all.length) return;
+
+  /* A project whose every card is past ignore_days gets no tab: those forks
+     and one-off issues were eleven of eighteen tabs, all of them dead. The
+     cards are still reachable — they are in "Старее месяца", which says how
+     many there are. */
+  var list = all.filter(function (p) { return p.fresh > 0; });
+  var buried = all.length - list.length;
+  if (view.repo && !list.some(function (p) { return p.repo === view.repo; })) {
+    var pinned = all.filter(function (p) { return p.repo === view.repo; });
+    list = list.concat(pinned);
+  }
+
+  var allWaiting = all.reduce(function (n, p) { return n + p.waiting; }, 0);
+  var allTotal = all.reduce(function (n, p) { return n + p.total; }, 0);
+  box.appendChild(tab('Все', '', allWaiting, allTotal, !view.repo, 0,
+    buried ? buried + ' ' + plural(buried, 'проект целиком старее месяца',
+                                   'проекта целиком старее месяца',
+                                   'проектов целиком старее месяца') : '',
+    function () { view.repo = ''; render(); }));
+
+  var label = tabLabeller(list);
+  list.forEach(function (p) {
+    box.appendChild(tab(label(p.repo), p.repo, p.waiting, p.total,
+      view.repo === p.repo, p.fresh, '', function () {
+        /* Clicking the active tab goes back to everything — otherwise the only
+           way out of a project is to find the "Все" tab again. */
+        view.repo = view.repo === p.repo ? '' : p.repo;
+        render();
+      }));
+  });
+}
+
+function tab(label, full, waiting, total, on, fresh, extra, onclick) {
+  var parts = [];
+  if (full) parts.push(full);
+  if (waiting) parts.push(waiting + ' ' + plural(waiting, 'ждёт', 'ждут', 'ждут') + ' твоего ответа');
+  parts.push(total + ' ' + plural(total, 'карточка', 'карточки', 'карточек'));
+  if (fresh) parts.push('активность ' + ago(fresh));
+  if (extra) parts.push(extra);
+  return h('button', {
+    class: 'tab' + (on ? ' on' : '') + (waiting ? ' has-waiting' : ''),
+    onclick: onclick,
+    title: parts.join(' · ')
+  }, [
+    h('span', { class: 'tab-name', text: label }),
+    waiting ? h('span', { class: 'tab-n', text: String(waiting) }) : null
+  ]);
+}
+
+/* Owner names eat the tab row and mostly repeat, so a tab shows just the
+   repository name — until that is ambiguous. Four separate forks all called
+   "ignite" made four identical tabs, so those get their owner back, shortened
+   enough to still fit. */
+function tabLabeller(list) {
+  var seen = {};
+  list.forEach(function (p) {
+    var name = bareName(p.repo);
+    seen[name] = (seen[name] || 0) + 1;
+  });
+  return function (repo) {
+    var name = bareName(repo);
+    if (seen[name] < 2) return name;
+    var owner = repo.slice(0, repo.indexOf('/'));
+    return (owner.length > 11 ? owner.slice(0, 10) + '…' : owner) + '/' + name;
+  };
+}
+
+function bareName(repo) {
+  var slash = repo.indexOf('/');
+  return slash < 0 ? repo : repo.slice(slash + 1);
+}
+
 function renderFilters() {
   var box = document.getElementById('filters');
   box.textContent = '';
   if (!state || !state.items) return;
 
-  var items = state.items.filter(function (it) { return view.showHidden || !it.hidden; });
-
   var kindCounts = {};
-  var repoCounts = {};
-  items.forEach(function (it) {
+  state.items.forEach(function (it) {
+    if (it.hidden && !view.showHidden) return;
+    if (view.repo && it.repo !== view.repo) return;
     kindCounts[it.kind] = (kindCounts[it.kind] || 0) + 1;
-    repoCounts[it.repo] = (repoCounts[it.repo] || 0) + 1;
   });
 
   Object.keys(KIND_ICON).forEach(function (kind) {
@@ -24,25 +101,6 @@ function renderFilters() {
         render();
       }));
   });
-
-  /* Repositories, busiest first — the long tail of one-issue repositories
-     would otherwise push the ones you actually work in off the row. */
-  var repos = Object.keys(repoCounts).sort(function (a, b) {
-    return repoCounts[b] - repoCounts[a] || a.localeCompare(b);
-  });
-  var shown = repos.slice(0, 10);
-  Object.keys(view.repos).forEach(function (r) {
-    if (view.repos[r] && shown.indexOf(r) < 0 && repoCounts[r]) shown.push(r);
-  });
-  shown.forEach(function (repo) {
-    box.appendChild(chip(repo, repoCounts[repo], view.repos[repo], function () {
-      view.repos[repo] = !view.repos[repo];
-      render();
-    }));
-  });
-  if (repos.length > shown.length) {
-    box.appendChild(h('span', { class: 'chip', text: '+' + (repos.length - shown.length) + ' ещё' }));
-  }
 }
 
 function chip(text, count, on, onclick) {
@@ -51,6 +109,7 @@ function chip(text, count, on, onclick) {
 }
 
 function render() {
+  renderTabs();
   renderFilters();
   renderSummary();
 
@@ -233,6 +292,9 @@ function renderSummary() {
   bits.push(s.you + ' ' + plural(s.you, 'ждёт', 'ждут', 'ждут') + ' тебя');
   bits.push(s.them + ' за другими');
   if (s.stale) bits.push(s.stale + ' залежалось');
+  // Folded-away items are counted out loud: a threshold that silently eats
+  // seventeen cards is indistinguishable from a collector that lost them.
+  if (s.archive) bits.push(s.archive + ' старее месяца');
   if (s.hidden) bits.push(s.hidden + ' скрыто');
   el.textContent = bits.join(' · ') + ' · опрошено ' + ago(state.generated);
 }

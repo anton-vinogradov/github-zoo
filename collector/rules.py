@@ -60,14 +60,15 @@ def classify(item: dict, login: str, cfg: dict, now: float) -> dict:
     verdict["waiting_since"] = since
     verdict["waiting_days"] = max(0.0, (now - since) / DAY)
 
-    # Anything nobody has touched in months is not a task, whatever the rules
-    # above concluded. Without this the top of the board was a pull request
+    # Anything nobody has touched for this long is not a task, whatever the
+    # rules above concluded. Without it the top of the board was a pull request
     # from 2019 whose review request is technically still pending and seven
     # more nobody was ever going to look at — which is precisely the pile this
-    # dashboard exists to see past. They keep their verdict under `would_be`
-    # so the archive can still be sorted and cleared deliberately.
+    # dashboard exists to see past. They keep their verdict under `would_be`,
+    # so the archive can still be sorted and cleared deliberately rather than
+    # silently dropped.
     idle_days = (now - (item.get("updated") or now)) / DAY
-    if idle_days >= float(cfg.get("abandon_days", 120)) and verdict["turn"] != IDLE:
+    if idle_days >= float(cfg.get("ignore_days", 30)) and verdict["turn"] != IDLE:
         verdict["would_be"] = verdict["turn"]
         verdict["turn"] = ARCHIVE
         verdict["abandoned_days"] = round(idle_days)

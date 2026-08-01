@@ -110,6 +110,55 @@ html, body {
 }
 .search:focus { outline: none; border-color: var(--accent); }
 
+/* ---------- project tabs ---------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-raise);
+  /* Twenty projects will not fit and must not wrap into four rows that push
+     the board off the screen. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tabs::-webkit-scrollbar { height: 5px; }
+.tabs::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 9px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color .12s, border-color .12s;
+}
+.tab:hover { color: var(--text); }
+.tab.on { color: var(--text); border-bottom-color: var(--accent); }
+/* A project with something waiting on you reads as live even when another tab
+   is selected; one with nothing pending stays quiet. */
+.tab.has-waiting { color: var(--text-dim); }
+.tab.has-waiting.on, .tab.has-waiting:hover { color: var(--text); }
+
+.tab-n {
+  padding: 0 6px;
+  border-radius: 20px;
+  background: var(--you);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 17px;
+}
+
 /* ---------- filters ---------- */
 
 .filters {

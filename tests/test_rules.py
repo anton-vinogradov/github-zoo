@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "collector"))
 import rules  # noqa: E402
 
 ME = "anton-vinogradov"
-CFG = {"stale_days": 14, "rot_days": 30, "unreviewed_days": 3, "abandon_days": 120}
+CFG = {"stale_days": 14, "rot_days": 30, "unreviewed_days": 3, "ignore_days": 30}
 NOW = 1_785_600_000.0
 DAY = 86400.0
 

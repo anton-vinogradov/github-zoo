@@ -10,7 +10,7 @@ var GROUPS = [
   { key: 'you', title: 'Твой ход', hint: 'без тебя не сдвинется' },
   { key: 'them', title: 'Ждём других', hint: 'твоя часть сделана' },
   { key: 'idle', title: 'Тихо', hint: 'черновики и объявления' },
-  { key: 'archive', title: 'Архив', hint: 'месяцами без движения' }
+  { key: 'archive', title: 'Старее месяца', hint: 'порог ignore_days в конфиге' }
 ];
 
 /* Reasons that should read as pressure rather than description. The rest are
@@ -23,10 +23,13 @@ var state = null;
 var view = {
   search: '',
   kinds: {},        /* pr/issue/discussion — empty means all */
-  repos: {},        /* same, by repository */
+  repo: '',         /* the active project tab; '' is all of them */
   unreadOnly: false,
   showHidden: false,
-  collapsed: { archive: true, idle: false, them: false, you: false }
+  /* Folded by default: neither is a task. The archive is what ignore_days put
+     away, and the orphan notifications are almost always about things that
+     were already merged — both are worth a count, not worth a screen. */
+  collapsed: { archive: true, orphans: true, idle: false, them: false, you: false }
 };
 
 /* ---------- dom ---------- */
@@ -81,22 +84,49 @@ function when(ts) {
 
 /* ---------- selection ---------- */
 
-function visibleItems() {
+/* Everything the filters allow *except* the project tab. The tabs' own counts
+   come from here: counting after the tab filter would leave every other tab
+   showing zero the moment one was picked. */
+function filteredExceptProject() {
   if (!state || !state.items) return [];
   var q = view.search.trim().toLowerCase();
   var kinds = Object.keys(view.kinds).filter(function (k) { return view.kinds[k]; });
-  var repos = Object.keys(view.repos).filter(function (k) { return view.repos[k]; });
 
   return state.items.filter(function (it) {
     if (it.hidden && !view.showHidden) return false;
     if (view.unreadOnly && !(it.verdict && it.verdict.unread)) return false;
     if (kinds.length && kinds.indexOf(it.kind) < 0) return false;
-    if (repos.length && repos.indexOf(it.repo) < 0) return false;
     if (q) {
       var hay = (it.repo + '#' + it.number + ' ' + it.title + ' ' + it.author).toLowerCase();
       if (hay.indexOf(q) < 0) return false;
     }
     return true;
+  });
+}
+
+function visibleItems() {
+  var items = filteredExceptProject();
+  if (!view.repo) return items;
+  return items.filter(function (it) { return it.repo === view.repo; });
+}
+
+/* One entry per project, newest activity first.
+   `waiting` counts only what is waiting on you, because that is the number
+   worth putting on a tab — a project with forty items you are not blocking is
+   quieter than one with a single unanswered question. Items past ignore_days
+   are counted in `total` but cannot make a project look fresh: their age is
+   exactly why they were folded away. */
+function projects() {
+  var map = {};
+  filteredExceptProject().forEach(function (it) {
+    var p = map[it.repo] || (map[it.repo] = { repo: it.repo, fresh: 0, waiting: 0, total: 0 });
+    p.total++;
+    var turn = (it.verdict && it.verdict.turn) || 'idle';
+    if (turn === 'you') p.waiting++;
+    if (turn !== 'archive' && (it.updated || 0) > p.fresh) p.fresh = it.updated || 0;
+  });
+  return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) {
+    return b.fresh - a.fresh || b.waiting - a.waiting || a.repo.localeCompare(b.repo);
   });
 }
 

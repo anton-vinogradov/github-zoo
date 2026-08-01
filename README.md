@@ -17,10 +17,14 @@ github-zoo sorts by obligation instead:
 | **your move** | nothing happens until you act — an unanswered review comment, a red build on your branch, a review someone asked you for, an issue on your repository nobody replied to |
 | **waiting on them** | your part is done; only age is worth watching |
 | **quiet** | drafts and announcements nobody is waiting on |
-| **archive** | months without movement — real, but not today's problem |
+| **older than a month** | no movement in `ignore_days` — real, but not today's problem, and folded away |
 
 That last bucket is why the board stays readable. Without it the top of the
-list was a 2019 review request that is technically still pending.
+list was a 2019 review request that is technically still pending. Nothing is
+thrown away — the count is always visible and one click opens it.
+
+Projects are tabs, newest activity first, each showing how many items there are
+waiting on you.
 
 ## What it watches
 
@@ -108,7 +112,7 @@ documents every field inline. The ones worth knowing:
 | --- | --- | --- |
 | `poll_seconds` | 300 | how often to ask GitHub |
 | `stale_days` | 14 | how long your move may wait before it is called stale |
-| `abandon_days` | 120 | untouched for this long → archive |
+| `ignore_days` | 30 | untouched for this long → out of the way (shown on request) |
 | `unreviewed_days` | 3 | your pull request with no reviewer this long → ask for one |
 | `extra_searches` | `[]` | extra GitHub search strings to include |
 | `notifications_include_ci` | `false` | let CI notifications back in |
