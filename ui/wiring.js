@@ -51,6 +51,16 @@ function renderFoot() {
     bits.push('лимит GitHub: ' + b.remaining + '/' + (b.limit || 5000));
   }
   if (state.notification_count) bits.push(state.notification_count + ' уведомлений');
+  if (state.forks) {
+    /* GitHub counts forks of deleted accounts but will not list them, so the
+       two numbers genuinely differ; saying both beats looking wrong. */
+    var forks = state.forks + ' ' + plural(state.forks, 'форк', 'форка', 'форков');
+    if (state.forks_visible && state.forks_visible < state.forks) {
+      forks += ' (видно ' + state.forks_visible + ')';
+    }
+    bits.push(forks);
+  }
+  if (state.stars) bits.push('★ ' + state.stars);
   var v = state.version || {};
   if (v.commit && v.commit !== 'unknown') {
     bits.push('версия ' + v.commit + (v.dirty ? ' (правки вне коммита)' : ''));

@@ -65,7 +65,19 @@ so "not now" never becomes "missed it".
 ## Telegram
 
 Optional. When something lands in your court, a message goes out; once a day a
-digest lists what is still waiting. Delivery goes through
+digest lists what is still waiting.
+
+It also reports the two things GitHub never tells you about: **someone forking
+your project** (no notification exists for that at all) and **someone starring
+it** — with who did it and the running total across your projects. Both stay
+quiet on the first run: years of existing forks and stars are not news, and a
+message per item on install day teaches you to mute the bot.
+
+A caveat GitHub itself creates: `forkCount` and the list of forks disagree.
+One repository here reports 15 forks and lists 4 — the rest belong to deleted
+or suspended accounts, counted for ever and never listed, the same through
+REST. New forks still show up, so nothing is missed; the dashboard just says
+both numbers rather than looking like it lost eleven. Delivery goes through
 [telegram.sh](https://github.com/fabianonline/telegram.sh), which already holds
 the proxy settings and an offline queue on hosts that need them.
 

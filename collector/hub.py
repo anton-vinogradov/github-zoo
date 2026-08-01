@@ -133,6 +133,8 @@ class Board:
                 item["verdict"] = rules.classify(item, self.login, self.cfg, now)
                 item.pop("found_by_set", None)
 
+            fresh_forks = self.store.new_forks(raw.get("forks") or {}, now)
+            fresh_stars = self.store.new_stars(raw.get("stars") or {}, now)
             events = self.store.reconcile(items, now)
             # reconcile knows the true age; the verdict was computed from
             # GitHub's timestamps alone and must agree with what is displayed.
@@ -161,6 +163,11 @@ class Board:
                 "recent": self.store.recent_events(now - 7 * 86400, 200),
                 "warnings": raw["warnings"],
                 "budget": self.client.budget(),
+                "forks": raw.get("forks_claimed") or self.store.fork_count(),
+                "forks_visible": self.store.fork_count(),
+                "new_forks": fresh_forks,
+                "stars": raw.get("total_stars") or 0,
+                "new_stars": fresh_stars,
                 "took": round(time.time() - started, 2),
                 "polling": False,
                 "version": self.version,
@@ -171,6 +178,10 @@ class Board:
             self.store.save_snapshot(snapshot)
             try:
                 self.alerts.process([i for i in items if not i.get("hidden")], summary)
+                if self.cfg.get("watch_forks", True):
+                    self.alerts.forks(fresh_forks)
+                if self.cfg.get("watch_stars", True):
+                    self.alerts.stars(fresh_stars, raw.get("total_stars") or 0)
             except Exception:  # noqa: BLE001 — alerting must not break polling
                 traceback.print_exc()
 

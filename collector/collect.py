@@ -510,6 +510,86 @@ def own_repos_with_discussions(client) -> list[str]:
     return out
 
 
+def own_repos_watch(client) -> dict:
+    """Forks and stars across every repository you own, in one query.
+
+    Neither is something GitHub tells you about: a fork produces no
+    notification at all, and a star produces one only if you have web
+    notifications turned on and happen to be looking. You find out months
+    later, by accident, that somebody took your project.
+
+    Both come from the same repository list, so they cost one point together.
+    Forks and stargazers are ordered newest-last, so a repository with more of
+    either than the page holds still cannot hide a new one behind old ones.
+    """
+    query = """
+    query($cursor: String) {
+      viewer {
+        repositories(first: 100, after: $cursor, ownerAffiliations: OWNER, isFork: false) {
+          pageInfo { hasNextPage endCursor }
+          nodes {
+            nameWithOwner url forkCount stargazerCount
+            forks(first: 50, orderBy: {field: CREATED_AT, direction: DESC}) {
+              nodes {
+                nameWithOwner url createdAt stargazerCount
+                owner { login }
+              }
+            }
+            stargazers(last: 10, orderBy: {field: STARRED_AT, direction: ASC}) {
+              edges { starredAt node { login url } }
+            }
+          }
+        }
+      }
+      rateLimit { cost remaining limit resetAt }
+    }
+    """
+    forks: dict[str, dict] = {}
+    stars: dict[str, dict] = {}
+    # GitHub's forkCount and its list of forks disagree, often badly: one
+    # repository here reports 15 forks and lists 4. The missing ones belong to
+    # deleted or suspended accounts — counted for ever, never listed, and the
+    # same through REST. New forks still appear in the list, so detection is
+    # unaffected; the count is reported separately so the dashboard does not
+    # look like it lost eleven of them.
+    claimed = 0
+    cursor = None
+    for _ in range(5):
+        data = client.graphql(query, {"cursor": cursor})
+        block = ((data.get("viewer") or {}).get("repositories") or {})
+        for repo in block.get("nodes") or []:
+            if not repo:
+                continue
+            name = repo["nameWithOwner"]
+            claimed += repo.get("forkCount") or 0
+            for fork in (repo.get("forks") or {}).get("nodes") or []:
+                if not fork:
+                    continue
+                forks[fork["nameWithOwner"]] = {
+                    "name": fork["nameWithOwner"],
+                    "parent": name,
+                    "url": fork.get("url") or "",
+                    "owner": (fork.get("owner") or {}).get("login") or "?",
+                    "created": ts(fork.get("createdAt")),
+                    "stars": fork.get("stargazerCount") or 0,
+                }
+            stars[name] = {
+                "repo": name,
+                "url": repo.get("url") or "",
+                "count": repo.get("stargazerCount") or 0,
+                # Newest last, so the tail is who arrived most recently.
+                "recent": [{"login": (e.get("node") or {}).get("login") or "?",
+                            "at": ts(e.get("starredAt"))}
+                           for e in (repo.get("stargazers") or {}).get("edges") or [] if e],
+            }
+        page = block.get("pageInfo") or {}
+        if not page.get("hasNextPage"):
+            break
+        cursor = page.get("endCursor")
+    return {"forks": forks, "stars": stars, "forks_claimed": claimed,
+            "total_stars": sum(r["count"] for r in stars.values())}
+
+
 def notifications(client, include_ci: bool = False) -> list[dict]:
     """The unread inbox, minus the noise.
 
@@ -648,6 +728,13 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
             item["incomplete"] = True
             item["participants"] = []
 
+    watch: dict = {}
+    if cfg.get("watch_forks", True) or cfg.get("watch_stars", True):
+        try:
+            watch = own_repos_watch(client)
+        except Exception as err:  # noqa: BLE001 — nobody loses the board over this
+            warnings.append(f"форки и звёзды не проверены: {err}")
+
     try:
         notes = notifications(client, cfg.get("notifications_include_ci", False))
     except Exception as err:  # noqa: BLE001
@@ -664,6 +751,10 @@ def collect(client, login: str, cfg: dict, cache: dict) -> dict:
         "items": items,
         "orphan_notifications": orphans,
         "notification_count": len(notes),
+        "forks": watch.get("forks") or {},
+        "forks_claimed": watch.get("forks_claimed") or 0,
+        "stars": watch.get("stars") or {},
+        "total_stars": watch.get("total_stars") or 0,
         "warnings": warnings,
         "took": time.time() - started,
     }

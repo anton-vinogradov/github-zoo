@@ -152,6 +152,54 @@ class Alerts:
                 f"   {why}",
                 f"   {item['url']}", ""]
 
+    def forks(self, forks: list[dict]) -> None:
+        """Announce forks of your own repositories.
+
+        Sent unconditionally rather than edge-tracked like the rest: the store
+        only ever hands over forks it has not seen before, and a fork happens
+        once. There is nothing to act on, which is why it is a message and not
+        a card — somebody took your project, and that is worth knowing the day
+        it happens rather than months later by accident.
+        """
+        if not self.enabled or not forks:
+            return
+        head = ("🍴 Твой проект форкнули" if len(forks) == 1
+                else f"🍴 Новых форков: {len(forks)}")
+        lines = [head, ""]
+        for fork in forks[:10]:
+            lines.append(f"{fork['name']} — форк {fork['parent']}")
+            stars = f" · ★{fork['stars']}" if fork.get("stars") else ""
+            lines.append(f"   автор {fork['owner']}{stars}")
+            lines.append(f"   {fork['url']}")
+            lines.append("")
+        if len(forks) > 10:
+            lines.append(f"…и ещё {len(forks) - 10}")
+        self._send("\n".join(lines) + self._footer())
+
+    def stars(self, gained: list[dict], total: int) -> None:
+        """Announce new stars, with who and the running total.
+
+        The total is the point: one more star means little on its own, and
+        "36 across your projects" is the number that says whether anything is
+        actually growing.
+        """
+        if not self.enabled or not gained:
+            return
+        added = sum(g["added"] for g in gained)
+        lines = ["⭐ Новая звезда" if added == 1 else f"⭐ Новых звёзд: {added}", ""]
+        for hit in gained[:10]:
+            who = ", ".join(hit["who"]) if hit.get("who") else "кто-то"
+            plus = "" if hit["added"] == 1 else f" (+{hit['added']})"
+            lines.append(f"{hit['repo']} — теперь {hit['count']}{plus}")
+            lines.append(f"   поставил {who}")
+            if hit.get("url"):
+                lines.append(f"   {hit['url']}/stargazers")
+            lines.append("")
+        if len(gained) > 10:
+            lines.append(f"…и ещё {len(gained) - 10} репозиториев")
+        lines.append(f"Всего по проектам: {total}")
+        self._send("\n".join(lines) + self._footer())
+
     def _maybe_digest(self, items: list[dict], summary: dict) -> None:
         """One reminder a day about what is still sitting there."""
         now = time.time()

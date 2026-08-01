@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS events (
 );
 CREATE INDEX IF NOT EXISTS events_ts ON events (ts);
 CREATE INDEX IF NOT EXISTS events_id ON events (id, ts);
+
+CREATE TABLE IF NOT EXISTS forks (
+  name       TEXT PRIMARY KEY,
+  parent     TEXT NOT NULL,
+  created    INTEGER,
+  first_seen INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS stars (
+  repo  TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  seen  INTEGER NOT NULL
+);
 """
 
 
@@ -184,6 +197,101 @@ class Store:
         except sqlite3.Error:
             return []
         return events
+
+    # ---------- forks ----------
+
+    def new_forks(self, current: dict, now: float) -> list[dict]:
+        """Record what forks exist; return the ones that are new to us.
+
+        The first run announces nothing. Someone installing this today has
+        forks going back years, and greeting them with a message per fork
+        would teach them to mute the bot on day one.
+
+        A fork that disappears is forgotten rather than remembered as deleted:
+        if it comes back it is news again, and there is nothing to act on in
+        the meantime.
+        """
+        if not self.ok or not current:
+            return []
+        stamp = int(now)
+        try:
+            with self.lock, self._db() as db:
+                known = {r["name"] for r in db.execute("SELECT name FROM forks")}
+                first_run = not known
+
+                fresh = [f for name, f in current.items() if name not in known]
+                for fork in current.values():
+                    db.execute(
+                        "INSERT OR IGNORE INTO forks (name, parent, created, first_seen) "
+                        "VALUES (?,?,?,?)",
+                        (fork["name"], fork["parent"], int(fork.get("created") or 0), stamp))
+                gone = known - set(current)
+                if gone:
+                    db.executemany("DELETE FROM forks WHERE name = ?",
+                                   [(name,) for name in gone])
+                for fork in ([] if first_run else fresh):
+                    db.execute("INSERT INTO events (ts, id, kind, detail) VALUES (?,?,?,?)",
+                               (stamp, fork["name"], "forked", fork["parent"]))
+        except sqlite3.Error:
+            return []
+        return [] if first_run else sorted(fresh, key=lambda f: -(f.get("created") or 0))
+
+    def new_stars(self, current: dict, now: float) -> list[dict]:
+        """Record star counts; return the repositories that gained some.
+
+        Like forks, the first run only remembers — thirty-five stars collected
+        over years are not news. Losing a star updates the count silently:
+        there is nothing to do about it and nobody wants that message.
+
+        Who starred comes from the tail of the stargazer list, which the query
+        asks for newest-last. If more arrived than the page held, the names are
+        the ones we have and the count is still right.
+        """
+        if not self.ok or not current:
+            return []
+        stamp = int(now)
+        gained: list[dict] = []
+        try:
+            with self.lock, self._db() as db:
+                known = {r["repo"]: r["count"] for r in
+                         db.execute("SELECT repo, count FROM stars")}
+                first_run = not known
+                for repo, info in current.items():
+                    count = info.get("count") or 0
+                    before = known.get(repo)
+                    if before is not None and count > before and not first_run:
+                        added = count - before
+                        recent = info.get("recent") or []
+                        gained.append({
+                            "repo": repo,
+                            "url": info.get("url") or "",
+                            "count": count,
+                            "added": added,
+                            "who": [w["login"] for w in recent[-added:]],
+                        })
+                        db.execute(
+                            "INSERT INTO events (ts, id, kind, detail) VALUES (?,?,?,?)",
+                            (stamp, repo, "starred", str(count)))
+                    db.execute(
+                        "INSERT INTO stars (repo, count, seen) VALUES (?,?,?) "
+                        "ON CONFLICT(repo) DO UPDATE SET count=excluded.count, seen=excluded.seen",
+                        (repo, count, stamp))
+                gone = set(known) - set(current)
+                if gone:
+                    db.executemany("DELETE FROM stars WHERE repo = ?",
+                                   [(r,) for r in gone])
+        except sqlite3.Error:
+            return []
+        return gained
+
+    def fork_count(self) -> int:
+        if not self.ok:
+            return 0
+        try:
+            with self.lock, self._db() as db:
+                return db.execute("SELECT COUNT(*) FROM forks").fetchone()[0]
+        except sqlite3.Error:
+            return 0
 
     def recent_events(self, since: float, limit: int = 200) -> list[dict]:
         if not self.ok:
