@@ -444,6 +444,35 @@ def test_a_fresh_request_outranks_an_old_nag():
     assert fresh["priority"] > old_nag["priority"]
 
 
+def test_waiting_on_them_is_ordered_by_age_alone():
+    """The board showed 21, 16, 15, 16, 15 days in that order.
+
+    Nothing in this bucket is yours to do, so what it is barely matters and how
+    long it has sat is the whole signal; mixing the two gave an order that was
+    neither one nor the other.
+    """
+    def waited(days, **over):
+        return verdict(item(mine=True, author=ME, review_requests=["r"],
+                            head_at=NOW - days * DAY, created=NOW - 200 * DAY,
+                            updated=NOW - 1 * DAY, **over))
+
+    ages = [21, 16, 15, 3, 1]
+    scored = [(d, waited(d)["priority"]) for d in ages]
+    assert [d for d, _ in sorted(scored, key=lambda p: -p[1])] == ages
+
+
+def test_the_reason_only_breaks_ties_between_equal_ages():
+    same_age = {"created": NOW - 200 * DAY, "updated": NOW - DAY,
+                "head_at": NOW - 10 * DAY}
+    review = verdict(item(mine=True, author=ME, review_requests=["r"], **same_age))
+    approved = verdict(item(mine=True, author=ME, review_decision="APPROVED",
+                            reviews=[{"login": "r", "state": "APPROVED",
+                                      "at": NOW - 10 * DAY, "url": ""}],
+                            **same_age))
+    assert approved["priority"] > review["priority"]      # closer to done
+    assert abs(approved["priority"] - review["priority"]) < 1  # but only just
+
+
 def test_your_move_outranks_their_move():
     yours = verdict(item(kind="issue", repo=f"{ME}/tool", author="stranger"))
     theirs = verdict(item(kind="issue", mine=True, author=ME))
