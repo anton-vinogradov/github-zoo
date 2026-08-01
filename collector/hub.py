@@ -105,6 +105,11 @@ class Board:
         restored = self.store.last_snapshot()
         if restored:
             restored["restored"] = True
+            # The stored snapshot carries the version that wrote it, which
+            # after a deploy is the previous one — and the footer showing the
+            # old commit right after an upgrade is exactly the confusion
+            # VERSION exists to prevent.
+            restored["version"] = self.version
             self.snapshot = restored
 
     # ---------- polling ----------
