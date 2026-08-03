@@ -200,6 +200,50 @@ class Alerts:
         lines.append(f"Всего по проектам: {total}")
         self._send("\n".join(lines) + self._footer())
 
+    def activity(self, events: list[dict], items: list[dict]) -> None:
+        """Things that happen *to* your work without becoming your move.
+
+        Your pull request being approved is the single most useful message this
+        thing can send — it means "you can merge now" — and it was silent,
+        because approval moves an item towards done rather than towards you.
+        Same for a comment on your own pull request: worth reading, not
+        necessarily worth acting on, and therefore never announced.
+
+        Changes-requested is deliberately absent: that one does become your
+        move and is already covered by the main alert, and sending both would
+        mean two messages for one event.
+        """
+        if not self.enabled or not events:
+            return
+        by_id = {i["id"]: i for i in items}
+        icon = {"approved": "✅", "commented": "💬"}
+        titles = {"approved": "Твой PR одобрили", "commented": "Комментарий в твоём"}
+
+        lines: list[str] = []
+        count = 0
+        for event in events:
+            kind = event.get("kind")
+            if kind not in icon:
+                continue
+            item = by_id.get(event["id"])
+            if not item or item.get("hidden"):
+                continue
+            count += 1
+            who = event.get("detail") or ""
+            lines.append(f"{icon[kind]} {item['repo']}#{item['number']} — {item['title'][:60]}")
+            if kind == "approved":
+                lines.append(f"   одобрил {who} — можно мержить" if who
+                             else "   одобрен — можно мержить")
+            else:
+                lines.append(f"   написал {who}" if who else "   новый комментарий")
+            lines.append(f"   {item['url']}")
+            lines.append("")
+        if not count:
+            return
+        head = ("🐙 Событие в твоих PR" if count == 1
+                else f"🐙 Событий в твоих PR: {count}")
+        self._send("\n".join([head, ""] + lines).rstrip() + self._footer())
+
     def _maybe_digest(self, items: list[dict], summary: dict) -> None:
         """One reminder a day about what is still sitting there."""
         now = time.time()

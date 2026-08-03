@@ -34,7 +34,12 @@ CREATE TABLE IF NOT EXISTS seen (
   turn         TEXT,
   turn_since   INTEGER,
   last_seen    INTEGER NOT NULL,
-  last_updated INTEGER
+  last_updated INTEGER,
+  -- What the item looked like last time, so a change in it can be announced.
+  -- "Approved" and "somebody commented" never make it your move, so without
+  -- these two columns they passed silently.
+  decision     TEXT,
+  comments     INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -61,6 +66,25 @@ CREATE TABLE IF NOT EXISTS stars (
 """
 
 
+def _reviewer(item: dict, decision: str) -> str:
+    """Who cast the deciding review, for the message to name them.
+
+    `deciders` comes from the cheap search fields rather than the detail pass,
+    because a pull request approved and merged between two polls is closed by
+    the time we notice — and closed ones deliberately skip the detail pass, so
+    the full review list is empty exactly when the name is wanted.
+    """
+    for source in (item.get("deciders") or [], item.get("reviews") or []):
+        votes = [r for r in source if r.get("state") == decision]
+        if votes:
+            return max(votes, key=lambda r: r.get("at") or 0).get("login") or ""
+    return ""
+
+
+def _commenter(item: dict) -> str:
+    return ((item.get("last_comment") or {}).get("login")) or ""
+
+
 class Store:
     def __init__(self, path: str, retention_days: int = 180):
         self.path = Path(path).expanduser()
@@ -71,6 +95,13 @@ class Store:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with self._db() as db:
                 db.executescript(SCHEMA)
+                # Databases created before these columns existed need them
+                # added; there is no other migration story here on purpose.
+                for column, kind in (("decision", "TEXT"), ("comments", "INTEGER")):
+                    try:
+                        db.execute(f"ALTER TABLE seen ADD COLUMN {column} {kind}")
+                    except sqlite3.OperationalError:
+                        pass  # already there
             self.ok = True
         except (OSError, sqlite3.Error) as err:
             # A dashboard that cannot write history is still a useful dashboard;
@@ -124,7 +155,7 @@ class Store:
 
     # ---------- per-item memory ----------
 
-    def reconcile(self, items: list[dict], now: float) -> list[dict]:
+    def reconcile(self, items: list[dict], now: float, login: str = "") -> list[dict]:
         """Record what each item is now, and return the changes worth telling.
 
         Called once per poll with the classified items. It mutates each item to
@@ -142,7 +173,8 @@ class Store:
         try:
             with self.lock, self._db() as db:
                 known = {r["id"]: r for r in db.execute(
-                    "SELECT id, first_seen, turn, turn_since, last_updated FROM seen")}
+                    "SELECT id, first_seen, turn, turn_since, last_updated, "
+                    "decision, comments FROM seen")}
                 live = set()
 
                 for item in items:
@@ -151,6 +183,9 @@ class Store:
                     verdict = item.get("verdict") or {}
                     turn = verdict.get("turn")
                     row = known.get(key)
+
+                    decision = item.get("review_decision")
+                    comments = int(item.get("comments") or 0)
 
                     if row is None:
                         first_seen = int(item.get("created") or now)
@@ -168,6 +203,23 @@ class Store:
                             events.append({"ts": stamp, "id": key, "kind": "activity",
                                            "detail": turn})
 
+                        # The two things that happen *to* your work without ever
+                        # becoming your move: it got approved, or somebody said
+                        # something. Both used to pass in silence.
+                        if item.get("mine"):
+                            if decision != row["decision"] and decision in (
+                                    "APPROVED", "CHANGES_REQUESTED"):
+                                events.append({"ts": stamp, "id": key,
+                                               "kind": decision.lower(),
+                                               "detail": _reviewer(item, decision)})
+                            was = row["comments"]
+                            who = _commenter(item)
+                            # Your own comment raises the count too, and being
+                            # told about what you just wrote is pure noise.
+                            if was is not None and comments > was and who != login:
+                                events.append({"ts": stamp, "id": key, "kind": "commented",
+                                               "detail": who})
+
                     item["first_seen"] = first_seen
                     # GitHub's own timestamp is the better answer when it is the
                     # *older* one: it knows a thread has been open since March,
@@ -177,12 +229,14 @@ class Store:
                                           if github_since else turn_since)
 
                     db.execute(
-                        "INSERT INTO seen (id, first_seen, turn, turn_since, last_seen, last_updated) "
-                        "VALUES (?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                        "INSERT INTO seen (id, first_seen, turn, turn_since, last_seen, "
+                        "last_updated, decision, comments) "
+                        "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                         "turn=excluded.turn, turn_since=excluded.turn_since, "
-                        "last_seen=excluded.last_seen, last_updated=excluded.last_updated",
+                        "last_seen=excluded.last_seen, last_updated=excluded.last_updated, "
+                        "decision=excluded.decision, comments=excluded.comments",
                         (key, first_seen, turn, turn_since, stamp,
-                         int(item.get("updated") or 0)))
+                         int(item.get("updated") or 0), decision, comments))
 
                 for key, row in known.items():
                     if key in live:

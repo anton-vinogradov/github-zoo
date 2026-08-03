@@ -67,6 +67,13 @@ so "not now" never becomes "missed it".
 Optional. When something lands in your court, a message goes out; once a day a
 digest lists what is still waiting.
 
+It reports what happens *to* your work without ever becoming your move:
+**your pull request was approved** — the message that means "you can merge now"
+— and **somebody commented on it**. Neither makes a card yours to act on, so
+both used to pass in silence. Your own comments do not count, and
+changes-requested is left out because that one is already your move and covered
+by the main alert.
+
 It also reports the two things GitHub never tells you about: **someone forking
 your project** (no notification exists for that at all) and **someone starring
 it** — with who did it and the running total across your projects. Both stay

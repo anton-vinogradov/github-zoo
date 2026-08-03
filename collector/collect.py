@@ -42,6 +42,10 @@ LIGHT_FIELDS = """
   ... on PullRequest {
     id number title url state isDraft createdAt updatedAt reviewDecision
     merged mergedAt closedAt
+    # Who cast the deciding review. The full review list is part of the
+    # expensive detail pass and is skipped entirely for closed pull requests,
+    # so an approval landing minutes before a merge had no name attached.
+    latestOpinionatedReviews(last: 3) { nodes { author { login } state } }
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
     comments(last:1) { totalCount nodes { author { login } createdAt } }
@@ -227,6 +231,9 @@ def _light_item(node: dict, login: str) -> dict | None:
         "last_comment": ({"login": (last.get("author") or {}).get("login") or "ghost",
                           "at": ts(last.get("createdAt"))} if last else None),
         "review_decision": node.get("reviewDecision"),
+        "deciders": [{"login": (r.get("author") or {}).get("login") or "?",
+                      "state": r.get("state")}
+                     for r in (node.get("latestOpinionatedReviews") or {}).get("nodes") or []],
         "found_by": set(),
         # Filled in by the detail pass; absent means "not fetched yet".
         "threads": None,
@@ -399,6 +406,7 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             # not the same as "nobody has written anything".
             "participants": None,
             "review_decision": None,
+            "deciders": [],
             "found_by": ["discussion"],
             "threads": None,
             "ci": None,

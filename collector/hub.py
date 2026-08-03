@@ -135,7 +135,7 @@ class Board:
 
             fresh_forks = self.store.new_forks(raw.get("forks") or {}, now)
             fresh_stars = self.store.new_stars(raw.get("stars") or {}, now)
-            events = self.store.reconcile(items, now)
+            events = self.store.reconcile(items, now, self.login)
             # reconcile knows the true age; the verdict was computed from
             # GitHub's timestamps alone and must agree with what is displayed.
             for item in items:
@@ -177,7 +177,13 @@ class Board:
                 self.snapshot = snapshot
             self.store.save_snapshot(snapshot)
             try:
+                seeded_before = self.alerts.seeded
                 self.alerts.process([i for i in items if not i.get("hidden")], summary)
+                # `alerts.seeded` is False only on the very first poll ever;
+                # announcing every approval and comment already on the board
+                # would be a wall of history nobody asked for.
+                if self.cfg.get("watch_activity", True) and seeded_before:
+                    self.alerts.activity(events, items)
                 if self.cfg.get("watch_forks", True):
                     self.alerts.forks(fresh_forks)
                 if self.cfg.get("watch_stars", True):

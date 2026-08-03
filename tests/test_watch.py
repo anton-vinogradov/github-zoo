@@ -151,3 +151,128 @@ def test_both_survive_a_restart(tmp_path):
     assert second.new_forks({"a/tool": fork("a/tool")}, NOW + 300) == []
     got = second.new_stars(stars("me/tool", 2, ["alice", "bob"]), NOW + 300)
     assert got[0]["who"] == ["bob"]
+
+
+# ---------- approvals and comments on your own work ----------
+
+def mine(**over):
+    """A pull request of yours, as reconcile() receives it."""
+    base = {"id": "acme/thing#1", "mine": True, "created": NOW, "updated": NOW,
+            "comments": 0, "review_decision": None, "reviews": [],
+            "last_comment": None, "verdict": {"turn": "them", "waiting_since": NOW}}
+    base.update(over)
+    return base
+
+
+def kinds(events, item_id="acme/thing#1"):
+    return [e["kind"] for e in events if e["id"] == item_id]
+
+
+def test_an_approval_is_an_event(store):
+    """The message this whole thing exists to send: you can merge now.
+
+    Approval moves an item towards done rather than towards you, so it never
+    became "your move" and passed in complete silence.
+    """
+    store.reconcile([mine()], NOW)
+    events = store.reconcile([mine(
+        review_decision="APPROVED", updated=NOW + 60,
+        reviews=[{"login": "wernerdv", "state": "APPROVED", "at": NOW + 60}])],
+        NOW + 300)
+    assert "approved" in kinds(events)
+    approved = [e for e in events if e["kind"] == "approved"][0]
+    assert approved["detail"] == "wernerdv"
+
+
+def test_an_approval_is_announced_once(store):
+    store.reconcile([mine()], NOW)
+    approved = mine(review_decision="APPROVED", updated=NOW + 60,
+                    reviews=[{"login": "wernerdv", "state": "APPROVED", "at": NOW + 60}])
+    store.reconcile([approved], NOW + 300)
+    assert "approved" not in kinds(store.reconcile([approved], NOW + 600))
+
+
+def test_a_new_comment_on_your_own_pull_request_is_an_event(store):
+    store.reconcile([mine(comments=2)], NOW)
+    events = store.reconcile([mine(
+        comments=3, updated=NOW + 60,
+        last_comment={"login": "nizhikov", "at": NOW + 60})], NOW + 300)
+    assert "commented" in kinds(events)
+    assert [e for e in events if e["kind"] == "commented"][0]["detail"] == "nizhikov"
+
+
+def test_comments_on_other_peoples_work_are_not_announced(store):
+    """Your inbox is theirs to manage; this board is about your own."""
+    theirs = mine(mine=False)
+    store.reconcile([theirs], NOW)
+    events = store.reconcile([mine(mine=False, comments=5, updated=NOW + 60)],
+                             NOW + 300)
+    assert "commented" not in kinds(events)
+
+
+def test_a_first_sighting_announces_nothing_but_appeared(store):
+    """An item already approved when first polled is not news."""
+    events = store.reconcile([mine(
+        review_decision="APPROVED", comments=4,
+        reviews=[{"login": "r", "state": "APPROVED", "at": NOW}])], NOW)
+    assert kinds(events) == ["appeared"]
+
+
+def test_changes_requested_is_recorded_separately_from_approval(store):
+    store.reconcile([mine()], NOW)
+    events = store.reconcile([mine(
+        review_decision="CHANGES_REQUESTED", updated=NOW + 60,
+        reviews=[{"login": "r", "state": "CHANGES_REQUESTED", "at": NOW + 60}])],
+        NOW + 300)
+    assert "changes_requested" in kinds(events)
+    assert "approved" not in kinds(events)
+
+
+def test_a_deleted_comment_is_not_an_event(store):
+    store.reconcile([mine(comments=5)], NOW)
+    events = store.reconcile([mine(comments=4, updated=NOW + 60)], NOW + 300)
+    assert "commented" not in kinds(events)
+
+
+def test_the_columns_are_added_to_an_older_database(tmp_path):
+    """Upgrading in place must not need the history thrown away."""
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE seen (id TEXT PRIMARY KEY, first_seen INTEGER NOT NULL,
+          turn TEXT, turn_since INTEGER, last_seen INTEGER NOT NULL,
+          last_updated INTEGER);
+        INSERT INTO seen VALUES ('acme/thing#1', 1, 'them', 1, 1, 1);
+    """)
+    old.commit()
+    old.close()
+
+    fresh = store_mod.Store(str(path))
+    assert fresh.ok
+    events = fresh.reconcile([mine(
+        review_decision="APPROVED", updated=NOW,
+        reviews=[{"login": "r", "state": "APPROVED", "at": NOW}])], NOW)
+    assert "approved" in kinds(events)
+
+
+def test_your_own_comment_is_not_news(store):
+    """Your comment raises the count too; being told what you just wrote is noise."""
+    store.reconcile([mine(comments=2)], NOW, "me")
+    events = store.reconcile([mine(
+        comments=3, updated=NOW + 60,
+        last_comment={"login": "me", "at": NOW + 60})], NOW + 300, "me")
+    assert "commented" not in kinds(events)
+
+
+def test_the_approver_is_named_even_after_the_merge(store):
+    """Approved and merged between two polls: closed pull requests skip the
+    detail pass, so the full review list is empty exactly when the name is
+    wanted. `deciders` comes from the cheap search fields instead."""
+    store.reconcile([mine()], NOW, "me")
+    events = store.reconcile([mine(
+        review_decision="APPROVED", state="MERGED", updated=NOW + 60,
+        reviews=[],  # detail pass skipped for closed items
+        deciders=[{"login": "wernerdv", "state": "APPROVED"}])], NOW + 300, "me")
+    approved = [e for e in events if e["kind"] == "approved"]
+    assert approved and approved[0]["detail"] == "wernerdv"
