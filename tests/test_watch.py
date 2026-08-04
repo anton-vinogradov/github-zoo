@@ -295,3 +295,27 @@ def test_the_approver_is_named_even_after_the_merge(store):
         approvals=["wernerdv"])], NOW + 300, "me")
     approved = [e for e in events if e["kind"] == "approved"]
     assert approved and approved[0]["detail"] == "wernerdv"
+
+
+def test_adding_the_column_does_not_announce_standing_approvals(tmp_path):
+    """Migrating an existing database announced every approval it had ever
+    seen — eight messages at once, mostly about merged pull requests."""
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE seen (id TEXT PRIMARY KEY, first_seen INTEGER NOT NULL,
+          turn TEXT, turn_since INTEGER, last_seen INTEGER NOT NULL,
+          last_updated INTEGER, decision TEXT, comments INTEGER);
+        INSERT INTO seen VALUES ('acme/thing#1', 1, 'them', 1, 1, 1, 'APPROVED', 0);
+    """)
+    old.commit()
+    old.close()
+
+    fresh = store_mod.Store(str(path))
+    approved = mine(review_decision="APPROVED", approvals=["wernerdv"], updated=NOW)
+    assert "approved" not in kinds(fresh.reconcile([approved], NOW, "me"))
+    # ...but a new approver after that is still news
+    events = fresh.reconcile([mine(review_decision="APPROVED", updated=NOW + 60,
+                                   approvals=["wernerdv", "Vladsz83"])], NOW + 300, "me")
+    assert [e for e in events if e["kind"] == "approved"][0]["detail"] == "Vladsz83"

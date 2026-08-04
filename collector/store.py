@@ -217,10 +217,16 @@ class Store:
                             # someone without write access never moves
                             # reviewDecision, and those are the ones that were
                             # passing unnoticed.
-                            was = set((row["approvals"] or "").split(",")) - {""}
+                            # NULL means "this column did not exist last time",
+                            # which is not the same as "nobody had approved":
+                            # adding the column announced every standing
+                            # approval at once. Unknown seeds silently; an
+                            # empty string is a real "nobody yet".
+                            known_approvals = row["approvals"]
+                            was = set((known_approvals or "").split(",")) - {""}
                             fresh = [w for w in (item.get("approvals") or [])
                                      if w not in was]
-                            if fresh:
+                            if fresh and known_approvals is not None:
                                 events.append({"ts": stamp, "id": key,
                                                "kind": "approved",
                                                "detail": ", ".join(fresh)})
