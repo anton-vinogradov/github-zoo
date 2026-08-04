@@ -212,37 +212,38 @@ class Store:
                         # The two things that happen *to* your work without ever
                         # becoming your move: it got approved, or somebody said
                         # something. Both used to pass in silence.
-                        if item.get("mine"):
-                            # By name rather than by decision: an approval from
-                            # someone without write access never moves
-                            # reviewDecision, and those are the ones that were
-                            # passing unnoticed.
-                            # NULL means "this column did not exist last time",
-                            # which is not the same as "nobody had approved":
-                            # adding the column announced every standing
-                            # approval at once. Unknown seeds silently; an
-                            # empty string is a real "nobody yet".
-                            known_approvals = row["approvals"]
-                            was = set((known_approvals or "").split(",")) - {""}
-                            fresh = [w for w in (item.get("approvals") or [])
-                                     if w not in was]
-                            if fresh and known_approvals is not None:
-                                events.append({"ts": stamp, "id": key,
-                                               "kind": "approved",
-                                               "detail": ", ".join(fresh)})
-                            if (decision != row["decision"]
-                                    and decision == "CHANGES_REQUESTED"):
-                                events.append({"ts": stamp, "id": key,
-                                               "kind": "changes_requested",
-                                               "detail": _reviewer(item, decision)})
-                            seen_comments = row["comments"]
-                            who = _commenter(item)
-                            # Your own comment raises the count too, and being
-                            # told about what you just wrote is pure noise.
-                            if (seen_comments is not None and comments > seen_comments
-                                    and who != login):
-                                events.append({"ts": stamp, "id": key, "kind": "commented",
-                                               "detail": who})
+                    # Everything below compares against what was stored last
+                    # time, so a column that did not exist then has no baseline
+                    # and nothing can be called new. Getting this wrong sent
+                    # every standing approval at once — twice, once per added
+                    # column. `approvals` is the marker for the whole set
+                    # because it was the last one added.
+                    tracked = row is not None and row["approvals"] is not None
+
+                    if row is not None and item.get("mine") and tracked:
+                        # By name rather than by decision: an approval from
+                        # someone without write access never moves
+                        # reviewDecision, and those are the ones that were
+                        # passing unnoticed.
+                        was = set((row["approvals"] or "").split(",")) - {""}
+                        fresh = [w for w in (item.get("approvals") or [])
+                                 if w not in was]
+                        if fresh:
+                            events.append({"ts": stamp, "id": key,
+                                           "kind": "approved",
+                                           "detail": ", ".join(fresh)})
+                        if (decision != row["decision"]
+                                and decision == "CHANGES_REQUESTED"):
+                            events.append({"ts": stamp, "id": key,
+                                           "kind": "changes_requested",
+                                           "detail": _reviewer(item, decision)})
+                        who = _commenter(item)
+                        # Your own comment raises the count too, and being told
+                        # about what you just wrote is pure noise.
+                        if (row["comments"] is not None and comments > row["comments"]
+                                and who != login):
+                            events.append({"ts": stamp, "id": key, "kind": "commented",
+                                           "detail": who})
 
                     item["first_seen"] = first_seen
                     # GitHub's own timestamp is the better answer when it is the

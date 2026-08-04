@@ -326,3 +326,30 @@ def test_adding_the_column_does_not_announce_standing_approvals(tmp_path):
     events = fresh.reconcile([mine(review_decision="APPROVED", updated=NOW + 60,
                                    approvals=["wernerdv", "Vladsz83"])], NOW + 300, "me")
     assert [e for e in events if e["kind"] == "approved"][0]["detail"] == "Vladsz83"
+
+
+def test_no_activity_at_all_is_announced_on_the_migration_pass(tmp_path):
+    """Both added columns sent the same standing approvals when they appeared.
+
+    One marker for the whole set, so a future column cannot repeat it: with no
+    baseline stored, nothing can be called new — not an approval, not a
+    changes-requested, not a comment.
+    """
+    import sqlite3
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript("""
+        CREATE TABLE seen (id TEXT PRIMARY KEY, first_seen INTEGER NOT NULL,
+          turn TEXT, turn_since INTEGER, last_seen INTEGER NOT NULL,
+          last_updated INTEGER);
+        INSERT INTO seen VALUES ('acme/thing#1', 1, 'them', 1, 1, 1);
+    """)
+    old.commit()
+    old.close()
+
+    fresh = store_mod.Store(str(path))
+    events = fresh.reconcile([mine(
+        review_decision="CHANGES_REQUESTED", approvals=["a", "b"], comments=9,
+        last_comment={"login": "someone", "at": NOW}, updated=NOW)], NOW, "me")
+    assert not [e for e in events
+                if e["kind"] in ("approved", "changes_requested", "commented")]
