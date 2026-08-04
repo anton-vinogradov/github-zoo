@@ -255,7 +255,12 @@ def test_a_deleted_comment_is_not_an_event(store):
 
 
 def test_the_columns_are_added_to_an_older_database(tmp_path):
-    """Upgrading in place must not need the history thrown away."""
+    """Upgrading in place must not need the history thrown away.
+
+    The first pass after the migration seeds the new columns quietly — see
+    test_adding_the_column_does_not_announce_standing_approvals — and the pass
+    after that behaves normally.
+    """
     import sqlite3
     path = tmp_path / "old.db"
     old = sqlite3.connect(path)
@@ -270,8 +275,10 @@ def test_the_columns_are_added_to_an_older_database(tmp_path):
 
     fresh = store_mod.Store(str(path))
     assert fresh.ok
+    fresh.reconcile([mine(updated=NOW)], NOW, "me")
     events = fresh.reconcile([mine(
-        review_decision="APPROVED", approvals=["r"], updated=NOW)], NOW)
+        review_decision="APPROVED", approvals=["r"], updated=NOW + 60)],
+        NOW + 300, "me")
     assert "approved" in kinds(events)
 
 
