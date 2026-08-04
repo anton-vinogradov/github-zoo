@@ -42,10 +42,17 @@ LIGHT_FIELDS = """
   ... on PullRequest {
     id number title url state isDraft createdAt updatedAt reviewDecision
     merged mergedAt closedAt
-    # Who cast the deciding review. The full review list is part of the
-    # expensive detail pass and is skipped entirely for closed pull requests,
-    # so an approval landing minutes before a merge had no name attached.
-    latestOpinionatedReviews(last: 3) { nodes { author { login } state } }
+    # Who reviewed, from the cheap fields — the full review list belongs to the
+    # detail pass, which is skipped for closed pull requests, so an approval
+    # landing minutes before a merge would otherwise have no name.
+    #
+    # Both lists are needed. GitHub only counts a review as "opinionated", and
+    # only moves reviewDecision, when its author has write access; on a project
+    # like Apache Ignite a colleague approves and a committer merges, so a real
+    # approval leaves reviewDecision null and latestOpinionatedReviews empty
+    # while sitting plainly in latestReviews.
+    latestOpinionatedReviews(last: 5) { nodes { author { login } state } }
+    latestReviews(last: 10) { nodes { author { login } state } }
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
     comments(last:1) { totalCount nodes { author { login } createdAt } }
@@ -189,6 +196,22 @@ def search_items(client, login: str, extra: list[str] | None = None,
     return items
 
 
+def _reviewers(node: dict) -> list[dict]:
+    """Latest verdict per person, opinionated or not.
+
+    The opinionated list wins where both have an entry: it is the one GitHub
+    itself acts on. The plain list is what catches an approval from someone
+    without write access, which counts for everything except the merge button.
+    """
+    seen: dict[str, dict] = {}
+    for key in ("latestReviews", "latestOpinionatedReviews"):
+        for review in (node.get(key) or {}).get("nodes") or []:
+            login = ((review or {}).get("author") or {}).get("login")
+            if login:
+                seen[login] = {"login": login, "state": review.get("state")}
+    return list(seen.values())
+
+
 def _date_days_ago(days: int) -> str:
     from datetime import timedelta
     return (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
@@ -231,9 +254,11 @@ def _light_item(node: dict, login: str) -> dict | None:
         "last_comment": ({"login": (last.get("author") or {}).get("login") or "ghost",
                           "at": ts(last.get("createdAt"))} if last else None),
         "review_decision": node.get("reviewDecision"),
-        "deciders": [{"login": (r.get("author") or {}).get("login") or "?",
-                      "state": r.get("state")}
-                     for r in (node.get("latestOpinionatedReviews") or {}).get("nodes") or []],
+        "deciders": _reviewers(node),
+        "approvals": sorted({r["login"] for r in _reviewers(node)
+                             if r["state"] == "APPROVED"}),
+        "blocking": sorted({r["login"] for r in _reviewers(node)
+                            if r["state"] == "CHANGES_REQUESTED"}),
         "found_by": set(),
         # Filled in by the detail pass; absent means "not fetched yet".
         "threads": None,
@@ -407,6 +432,8 @@ def discussions(client, login: str, repos: list[str]) -> dict:
             "participants": None,
             "review_decision": None,
             "deciders": [],
+            "approvals": [],
+            "blocking": [],
             "found_by": ["discussion"],
             "threads": None,
             "ci": None,

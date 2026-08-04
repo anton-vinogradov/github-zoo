@@ -69,7 +69,10 @@ digest lists what is still waiting.
 
 It reports what happens *to* your work without ever becoming your move:
 **your pull request was approved** — the message that means "you can merge now"
-— and **somebody commented on it**. Neither makes a card yours to act on, so
+— and **somebody commented on it**. Approval is tracked by who gave it rather
+than by GitHub's `reviewDecision`, because that field only moves for reviewers
+with write access: where a colleague reviews and a committer merges, a real
+approval leaves it empty. Neither makes a card yours to act on, so
 both used to pass in silence. Your own comments do not count, and
 changes-requested is left out because that one is already your move and covered
 by the main alert.

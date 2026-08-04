@@ -158,7 +158,7 @@ def test_both_survive_a_restart(tmp_path):
 def mine(**over):
     """A pull request of yours, as reconcile() receives it."""
     base = {"id": "acme/thing#1", "mine": True, "created": NOW, "updated": NOW,
-            "comments": 0, "review_decision": None, "reviews": [],
+            "comments": 0, "review_decision": None, "reviews": [], "approvals": [],
             "last_comment": None, "verdict": {"turn": "them", "waiting_since": NOW}}
     base.update(over)
     return base
@@ -176,18 +176,39 @@ def test_an_approval_is_an_event(store):
     """
     store.reconcile([mine()], NOW)
     events = store.reconcile([mine(
-        review_decision="APPROVED", updated=NOW + 60,
-        reviews=[{"login": "wernerdv", "state": "APPROVED", "at": NOW + 60}])],
+        review_decision="APPROVED", approvals=["wernerdv"], updated=NOW + 60)],
         NOW + 300)
     assert "approved" in kinds(events)
     approved = [e for e in events if e["kind"] == "approved"][0]
     assert approved["detail"] == "wernerdv"
 
 
+def test_an_approval_without_write_access_still_counts(store):
+    """GitHub only moves reviewDecision for reviewers who can merge.
+
+    On Apache Ignite a colleague approves and a committer merges, so a real
+    approval leaves reviewDecision null — and watching that field alone missed
+    the approval entirely.
+    """
+    store.reconcile([mine()], NOW)
+    events = store.reconcile([mine(
+        review_decision=None, approvals=["Vladsz83"], updated=NOW + 60)],
+        NOW + 300)
+    assert "approved" in kinds(events)
+    assert [e for e in events if e["kind"] == "approved"][0]["detail"] == "Vladsz83"
+
+
+def test_a_second_approver_is_announced_separately(store):
+    store.reconcile([mine(approvals=["alice"])], NOW)
+    events = store.reconcile([mine(approvals=["alice", "bob"], updated=NOW + 60)],
+                             NOW + 300)
+    assert [e for e in events if e["kind"] == "approved"][0]["detail"] == "bob"
+
+
 def test_an_approval_is_announced_once(store):
     store.reconcile([mine()], NOW)
-    approved = mine(review_decision="APPROVED", updated=NOW + 60,
-                    reviews=[{"login": "wernerdv", "state": "APPROVED", "at": NOW + 60}])
+    approved = mine(review_decision="APPROVED", approvals=["wernerdv"],
+                    updated=NOW + 60)
     store.reconcile([approved], NOW + 300)
     assert "approved" not in kinds(store.reconcile([approved], NOW + 600))
 
@@ -213,8 +234,7 @@ def test_comments_on_other_peoples_work_are_not_announced(store):
 def test_a_first_sighting_announces_nothing_but_appeared(store):
     """An item already approved when first polled is not news."""
     events = store.reconcile([mine(
-        review_decision="APPROVED", comments=4,
-        reviews=[{"login": "r", "state": "APPROVED", "at": NOW}])], NOW)
+        review_decision="APPROVED", comments=4, approvals=["r"])], NOW)
     assert kinds(events) == ["appeared"]
 
 
@@ -251,8 +271,7 @@ def test_the_columns_are_added_to_an_older_database(tmp_path):
     fresh = store_mod.Store(str(path))
     assert fresh.ok
     events = fresh.reconcile([mine(
-        review_decision="APPROVED", updated=NOW,
-        reviews=[{"login": "r", "state": "APPROVED", "at": NOW}])], NOW)
+        review_decision="APPROVED", approvals=["r"], updated=NOW)], NOW)
     assert "approved" in kinds(events)
 
 
@@ -273,6 +292,6 @@ def test_the_approver_is_named_even_after_the_merge(store):
     events = store.reconcile([mine(
         review_decision="APPROVED", state="MERGED", updated=NOW + 60,
         reviews=[],  # detail pass skipped for closed items
-        deciders=[{"login": "wernerdv", "state": "APPROVED"}])], NOW + 300, "me")
+        approvals=["wernerdv"])], NOW + 300, "me")
     approved = [e for e in events if e["kind"] == "approved"]
     assert approved and approved[0]["detail"] == "wernerdv"

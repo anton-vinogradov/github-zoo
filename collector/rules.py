@@ -181,8 +181,15 @@ def _pull_request(item: dict, login: str, cfg: dict, now: float) -> dict:
             reasons.append(_reason("ci", f"CI красный: {names}{more}", weight=35))
             waiting.append(item.get("head_at") or item.get("updated") or now)
 
-        if item.get("review_decision") == BLOCKING_REVIEW:
-            reasons.append(_reason("changes", "запрошены правки", weight=45))
+        # `reviewDecision` only moves for reviewers with write access, so on a
+        # project where a colleague reviews and a committer merges it stays
+        # empty through a real "changes requested". The named lists are the
+        # truth; the decision is a summary of a subset of them.
+        blocked_by = item.get("blocking") or []
+        if item.get("review_decision") == BLOCKING_REVIEW or blocked_by:
+            who = ", ".join(blocked_by[:3])
+            reasons.append(_reason(
+                "changes", f"запрошены правки{': ' + who if who else ''}", weight=45))
             blocking = [r for r in item.get("reviews") or []
                         if r.get("state") == BLOCKING_REVIEW]
             waiting.extend(r.get("at") or 0 for r in blocking)
@@ -193,9 +200,13 @@ def _pull_request(item: dict, login: str, cfg: dict, now: float) -> dict:
         # Nothing is blocked, so it is someone else's move — but note *whose*,
         # because "waiting for review" and "nobody has been asked" need
         # different actions from you.
-        if item.get("review_decision") == APPROVING_REVIEW:
+        approved_by = item.get("approvals") or []
+        if item.get("review_decision") == APPROVING_REVIEW or approved_by:
+            who = ", ".join(approved_by[:3])
             return {"turn": THEM, "reasons": reasons + [
-                _reason("approved", "одобрен — ждёт мержа", 15)],
+                _reason("approved",
+                        f"одобрил {who} — ждёт мержа" if who else "одобрен — ждёт мержа",
+                        15)],
                 "waiting_since": _last_approval(item) or item.get("updated")}
         if not item.get("review_requests") and not item.get("reviews"):
             age_days = (now - (item.get("created") or now)) / DAY

@@ -39,7 +39,11 @@ CREATE TABLE IF NOT EXISTS seen (
   -- "Approved" and "somebody commented" never make it your move, so without
   -- these two columns they passed silently.
   decision     TEXT,
-  comments     INTEGER
+  comments     INTEGER,
+  -- Who has approved, as a sorted comma-separated list. Not `decision`,
+  -- because GitHub leaves that empty for approvals by people without write
+  -- access — which on an Apache project is most of them.
+  approvals    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS events (
@@ -97,7 +101,8 @@ class Store:
                 db.executescript(SCHEMA)
                 # Databases created before these columns existed need them
                 # added; there is no other migration story here on purpose.
-                for column, kind in (("decision", "TEXT"), ("comments", "INTEGER")):
+                for column, kind in (("decision", "TEXT"), ("comments", "INTEGER"),
+                                     ("approvals", "TEXT")):
                     try:
                         db.execute(f"ALTER TABLE seen ADD COLUMN {column} {kind}")
                     except sqlite3.OperationalError:
@@ -174,7 +179,7 @@ class Store:
             with self.lock, self._db() as db:
                 known = {r["id"]: r for r in db.execute(
                     "SELECT id, first_seen, turn, turn_since, last_updated, "
-                    "decision, comments FROM seen")}
+                    "decision, comments, approvals FROM seen")}
                 live = set()
 
                 for item in items:
@@ -186,6 +191,7 @@ class Store:
 
                     decision = item.get("review_decision")
                     comments = int(item.get("comments") or 0)
+                    approvals = ",".join(item.get("approvals") or [])
 
                     if row is None:
                         first_seen = int(item.get("created") or now)
@@ -207,16 +213,28 @@ class Store:
                         # becoming your move: it got approved, or somebody said
                         # something. Both used to pass in silence.
                         if item.get("mine"):
-                            if decision != row["decision"] and decision in (
-                                    "APPROVED", "CHANGES_REQUESTED"):
+                            # By name rather than by decision: an approval from
+                            # someone without write access never moves
+                            # reviewDecision, and those are the ones that were
+                            # passing unnoticed.
+                            was = set((row["approvals"] or "").split(",")) - {""}
+                            fresh = [w for w in (item.get("approvals") or [])
+                                     if w not in was]
+                            if fresh:
                                 events.append({"ts": stamp, "id": key,
-                                               "kind": decision.lower(),
+                                               "kind": "approved",
+                                               "detail": ", ".join(fresh)})
+                            if (decision != row["decision"]
+                                    and decision == "CHANGES_REQUESTED"):
+                                events.append({"ts": stamp, "id": key,
+                                               "kind": "changes_requested",
                                                "detail": _reviewer(item, decision)})
-                            was = row["comments"]
+                            seen_comments = row["comments"]
                             who = _commenter(item)
                             # Your own comment raises the count too, and being
                             # told about what you just wrote is pure noise.
-                            if was is not None and comments > was and who != login:
+                            if (seen_comments is not None and comments > seen_comments
+                                    and who != login):
                                 events.append({"ts": stamp, "id": key, "kind": "commented",
                                                "detail": who})
 
@@ -230,13 +248,14 @@ class Store:
 
                     db.execute(
                         "INSERT INTO seen (id, first_seen, turn, turn_since, last_seen, "
-                        "last_updated, decision, comments) "
-                        "VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
+                        "last_updated, decision, comments, approvals) "
+                        "VALUES (?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET "
                         "turn=excluded.turn, turn_since=excluded.turn_since, "
                         "last_seen=excluded.last_seen, last_updated=excluded.last_updated, "
-                        "decision=excluded.decision, comments=excluded.comments",
+                        "decision=excluded.decision, comments=excluded.comments, "
+                        "approvals=excluded.approvals",
                         (key, first_seen, turn, turn_since, stamp,
-                         int(item.get("updated") or 0), decision, comments))
+                         int(item.get("updated") or 0), decision, comments, approvals))
 
                 for key, row in known.items():
                     if key in live:
