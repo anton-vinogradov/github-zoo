@@ -116,12 +116,12 @@ function renderHidden() {
     var until = entry.kind === 'snooze' && entry.until
       ? 'до ' + new Date(entry.until * 1000).toLocaleString('ru-RU',
           { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
-      : 'до любого изменения';
+      : (entry.kind === 'forever' ? '' : 'до новой активности');
     return h('div', { class: 'set-row' }, [
       h('div', { class: 'set-label' }, [
         h('label', { text: id }),
         h('p', { class: 'set-hint',
-                 text: (entry.kind === 'mute' ? 'заглушено' : 'отложено') + ' ' + until })
+                 text: (HIDDEN_LABEL[entry.kind] || entry.kind) + (until ? ' ' + until : '') })
       ]),
       h('div', { class: 'set-control' }, [
         h('button', { class: 'btn btn-small', text: 'вернуть', onclick: function () {

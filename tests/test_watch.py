@@ -353,3 +353,68 @@ def test_no_activity_at_all_is_announced_on_the_migration_pass(tmp_path):
         last_comment={"login": "someone", "at": NOW}, updated=NOW)], NOW, "me")
     assert not [e for e in events
                 if e["kind"] in ("approved", "changes_requested", "commented")]
+
+
+# ---------- quietening: two different promises ----------
+
+def acks(tmp_path):
+    import acks as acks_mod
+    return acks_mod.Acks(str(tmp_path / "acks.json"))
+
+
+def carded(updated):
+    return {"id": "acme/x#1", "updated": updated}
+
+
+def test_mute_gives_way_to_activity(tmp_path):
+    """"Muted" that hides through a real comment is a promise nobody wants."""
+    a = acks(tmp_path)
+    a.mute("acme/x#1", updated=NOW)
+    item = carded(NOW + 600)
+    a.apply([item], NOW + 700)
+    assert not item.get("hidden")
+
+
+def test_forever_means_forever(tmp_path):
+    """The 2019 pull request: activity on it is not news, it is the reason it
+    kept coming back."""
+    a = acks(tmp_path)
+    a.mute("acme/x#1", updated=NOW, forever=True)
+    item = carded(NOW + 10 ** 7)
+    a.apply([item], NOW + 10 ** 7 + 1)
+    assert item["hidden"] == "forever"
+
+
+def test_forever_survives_a_restart(tmp_path):
+    import acks as acks_mod
+    path = str(tmp_path / "acks.json")
+    acks_mod.Acks(path).mute("acme/x#1", updated=NOW, forever=True)
+    item = carded(NOW + 10 ** 6)
+    acks_mod.Acks(path).apply([item], NOW + 10 ** 6 + 1)
+    assert item["hidden"] == "forever"
+
+
+def test_forever_can_still_be_undone_by_hand(tmp_path):
+    a = acks(tmp_path)
+    a.mute("acme/x#1", updated=NOW, forever=True)
+    a.clear("acme/x#1")
+    item = carded(NOW)
+    a.apply([item], NOW + 1)
+    assert not item.get("hidden")
+
+
+def test_a_snooze_still_expires(tmp_path):
+    """Real clock on purpose: snooze() dates its deadline from time.time(),
+    so an invented NOW would test nothing."""
+    import time
+    a = acks(tmp_path)
+    real = time.time()
+    a.snooze("acme/x#1", 3600, updated=real)
+
+    still = {"id": "acme/x#1", "updated": real}
+    a.apply([still], real + 60)
+    assert still["hidden"] == "snooze"
+
+    later = {"id": "acme/x#1", "updated": real}
+    a.apply([later], real + 7200)
+    assert not later.get("hidden")

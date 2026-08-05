@@ -121,8 +121,20 @@ function wire() {
     if (e.target.id === 'modal' || e.target.closest('[data-close]')) closeModal();
   });
 
+  document.addEventListener('click', function (e) {
+    if (e.target.closest('.snooze')) return;
+    document.querySelectorAll('.snooze-menu').forEach(function (m) {
+      m.classList.add('hidden');
+    });
+  });
+
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') closeModal();
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.snooze-menu').forEach(function (m) {
+        m.classList.add('hidden');
+      });
+      closeModal();
+    }
     if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
       e.preventDefault();
       document.getElementById('search').focus();

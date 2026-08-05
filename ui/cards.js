@@ -168,8 +168,7 @@ function renderCard(item) {
     h('span', { class: 'num', text: '#' + item.number }),
     item.draft ? h('span', { class: 'label', text: 'черновик' }) : null,
     item.private ? h('span', { class: 'label', text: 'private' }) : null,
-    item.hidden ? h('span', { class: 'label',
-      text: item.hidden === 'mute' ? 'заглушено' : 'отложено' }) : null
+    item.hidden ? h('span', { class: 'label', text: HIDDEN_LABEL[item.hidden] }) : null
   ].concat((item.labels || []).slice(0, 3).map(function (l) {
     return h('span', { class: 'label', text: l.name });
   })));
@@ -203,7 +202,8 @@ function renderCard(item) {
   return h('article', {
     class: 'card ' + turn + (item.hidden ? ' hidden-item' : ''),
     onclick: function (e) {
-      if (e.target.closest('button') || e.target.closest('a')) return;
+      if (e.target.closest('button') || e.target.closest('a') ||
+          e.target.closest('.snooze-menu')) return;
       openDetails(item);
     }
   }, [h('div', { class: 'kind', text: KIND_ICON[item.kind] || '•' }), main, side]);
@@ -230,13 +230,91 @@ function renderRowActions(item) {
     }, text: 'вернуть' }));
     return box;
   }
-  box.appendChild(h('button', { class: 'btn btn-small', title: 'скрыть на сутки — вернётся раньше, если что-то изменится',
-    onclick: function () { act('/api/snooze', { id: item.id, hours: 24 }, 'отложено на сутки'); },
-    text: 'отложить' }));
-  box.appendChild(h('button', { class: 'btn btn-small', title: 'скрыть до любого изменения',
-    onclick: function () { act('/api/mute', { id: item.id }, 'заглушено'); },
-    text: 'заглушить' }));
+  box.appendChild(snoozeControl(item));
+  box.appendChild(muteControl(item));
   return box;
+}
+
+/* A day is the answer nearly every time, so it stays one click. The rest live
+   behind the arrow: an hour for "after this meeting", a week for something
+   that genuinely cannot move until next sprint. */
+var SNOOZE_DEFAULT = { hours: 24, label: 'на день' };
+var SNOOZE_PRESETS = [
+  { hours: 1, label: 'на час' },
+  { hours: 4, label: 'на 4 часа' },
+  { hours: 24, label: 'на день' },
+  { hours: 72, label: 'на 3 дня' },
+  { hours: 168, label: 'на неделю' }
+];
+
+/* "Muted" meant one thing and read as another: it hid until any activity, so a
+   bot comment brought it straight back. Both promises are useful and they are
+   not the same, so both are offered by name instead of being guessed at. */
+var MUTE_OPTIONS = [
+  { forever: false, label: 'до нового события', said: 'заглушено до новой активности' },
+  { forever: true, label: 'навсегда', said: 'скрыто навсегда' }
+];
+
+function snoozeControl(item) {
+  return dropdown({
+    label: 'отложить',
+    title: 'скрыть ' + SNOOZE_DEFAULT.label + ' — вернётся раньше, если там что-то произойдёт',
+    main: SNOOZE_DEFAULT,
+    options: SNOOZE_PRESETS,
+    isDefault: function (p) { return p.hours === SNOOZE_DEFAULT.hours; },
+    run: function (preset) {
+      act('/api/snooze', { id: item.id, hours: preset.hours },
+          'отложено ' + preset.label);
+    }
+  });
+}
+
+function muteControl(item) {
+  return dropdown({
+    label: 'заглушить',
+    title: 'скрыть до новой активности — «навсегда» под стрелкой',
+    main: MUTE_OPTIONS[0],
+    options: MUTE_OPTIONS,
+    isDefault: function (o) { return !o.forever; },
+    run: function (option) {
+      act('/api/mute', { id: item.id, forever: option.forever }, option.said);
+    }
+  });
+}
+
+/* A split button: the common answer is one click, the rest one more. Shared by
+   both controls, because two dropdowns that open differently would be worse
+   than one. */
+function dropdown(spec) {
+  var group = h('span', { class: 'snooze' });
+  group.appendChild(h('button', {
+    class: 'btn btn-small snooze-main', title: spec.title,
+    onclick: function () { spec.run(spec.main); },
+    text: spec.label
+  }));
+
+  var menu = h('span', { class: 'snooze-menu hidden' }, spec.options.map(function (o) {
+    return h('button', {
+      class: 'btn btn-small' + (spec.isDefault(o) ? ' on' : ''),
+      onclick: function () { spec.run(o); },
+      text: o.label
+    });
+  }));
+
+  group.appendChild(h('button', {
+    class: 'btn btn-small snooze-more', title: 'выбрать вариант',
+    onclick: function (e) {
+      // One menu open at a time, or the board fills with them.
+      document.querySelectorAll('.snooze-menu').forEach(function (m) {
+        if (m !== menu) m.classList.add('hidden');
+      });
+      menu.classList.toggle('hidden');
+      e.stopPropagation();
+    },
+    text: '▾'
+  }));
+  group.appendChild(menu);
+  return group;
 }
 
 function act(path, body, okText) {

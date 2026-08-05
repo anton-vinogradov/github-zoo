@@ -58,16 +58,32 @@ function openDetails(item) {
       })))]));
   }
 
-  body.appendChild(h('div', { class: 'row-actions' }, [
+  body.appendChild(h('div', { class: 'row-actions snooze-row' }, [
     h('a', { class: 'btn', href: item.url, target: '_blank', rel: 'noopener',
              text: 'открыть на GitHub' }),
     item.hidden
       ? h('button', { class: 'btn', text: 'вернуть на доску', onclick: function () {
           act('/api/unhide', { id: item.id }, 'снова показываю'); closeModal();
         } })
-      : h('button', { class: 'btn', text: 'отложить на неделю', onclick: function () {
-          act('/api/snooze', { id: item.id, hours: 168 }, 'отложено на неделю'); closeModal();
-        } })
+      : null
+  ].concat(item.hidden ? [] : MUTE_OPTIONS.map(function (o) {
+    return h('button', {
+      class: 'btn', text: 'заглушить ' + o.label,
+      onclick: function () {
+        act('/api/mute', { id: item.id, forever: o.forever }, o.said);
+        closeModal();
+      }
+    });
+  })).concat(item.hidden ? [] : SNOOZE_PRESETS.map(function (p) {
+    /* The same presets as the card, spelled out here because there is room:
+       a modal with one arbitrary duration on it was a guess about what the
+       reader wanted. */
+    return h('button', {
+      class: 'btn' + (p.hours === SNOOZE_DEFAULT.hours ? ' btn-primary' : ''),
+      text: p.label,
+      onclick: function () { snooze(item, p); closeModal(); }
+    });
+  }))
   ]));
 
   document.getElementById('modal').classList.remove('hidden');

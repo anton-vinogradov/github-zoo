@@ -58,9 +58,18 @@ The tab icon is the part of this you see most: a blue octopus when nothing is
 waiting on you, an orange one when something is. The count sits in the page
 title, for when the tab strip is too narrow to show an icon clearly.
 
-Anything can be **snoozed** (hidden until a chosen time) or **muted** (hidden
-until it genuinely changes). A snooze is cancelled the moment the item moves,
-so "not now" never becomes "missed it".
+Anything can be quietened, in three ways that promise different things:
+
+* **snoozed** for an hour, four hours, a day (the default), three days or a
+  week. Cancelled the moment the item genuinely moves, so "not now" never
+  becomes "missed it".
+* **muted until something happens** — back on the board at the next real
+  activity.
+* **muted for good** — the 2019 pull request that will never be merged, where
+  activity is not news but the reason it kept coming back.
+
+The last two used to be one button called "muted", which did the first thing
+and read like the second.
 
 ## Telegram
 

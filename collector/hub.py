@@ -383,7 +383,8 @@ class Handler(BaseHTTPRequestHandler):
             if not item_id:
                 self._json({"ok": False, "error": "нет id"}, 400)
                 return
-            self.board.acks.mute(item_id, _updated(self.board, item_id))
+            self.board.acks.mute(item_id, _updated(self.board, item_id),
+                                 bool(body.get("forever")))
             self.board.reapply_acks()
             self._json({"ok": True, "summary": self.board.state().get("summary")})
         elif path == "/api/unhide":

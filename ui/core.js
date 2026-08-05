@@ -5,6 +5,7 @@
 
 var KIND_ICON = { pr: '🔀', issue: '🐛', discussion: '💬' };
 var KIND_NAME = { pr: 'PR', issue: 'issue', discussion: 'обсуждение' };
+var HIDDEN_LABEL = { snooze: 'отложено', mute: 'заглушено', forever: 'скрыто навсегда' };
 
 var GROUPS = [
   { key: 'you', title: 'Твой ход', hint: 'без тебя не сдвинется' },

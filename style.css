@@ -315,19 +315,11 @@ html, body {
 .row-actions { display: flex; gap: 4px; margin-top: 6px; }
 
 @media (hover: hover) and (min-width: 901px) {
-  .card .row-actions {
-    margin-top: 0;
-    max-height: 0;
-    overflow: hidden;
-    opacity: 0;
-    transition: max-height .12s ease, opacity .12s ease, margin-top .12s ease;
-  }
+  /* `display` rather than a collapsed max-height with overflow:hidden — the
+     snooze menu drops out of this row, and the clipping ate it. */
+  .card .row-actions { display: none; }
   .card:hover .row-actions,
-  .card:focus-within .row-actions {
-    max-height: 40px;
-    margin-top: 6px;
-    opacity: 1;
-  }
+  .card:focus-within .row-actions { display: flex; }
 }
 
 .modal .row-actions { max-height: none; opacity: 1; margin-top: 6px; }
@@ -541,3 +533,37 @@ a:hover { text-decoration: underline; }
   .set-row { flex-direction: column; gap: 8px; }
   .set-control { align-self: flex-start; }
 }
+
+/* ---------- snooze presets ---------- */
+
+/* A day is one click; the arrow opens the rest. Presets beat a free-form
+   duration here — the answer is always one of five, and typing "24" into a box
+   is worse than pressing "на день". */
+.snooze { position: relative; display: inline-flex; }
+.snooze-main { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.snooze-more {
+  margin-left: -1px;
+  padding-left: 6px;
+  padding-right: 6px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.snooze-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-raise);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
+}
+.snooze-menu .btn { text-align: left; white-space: nowrap; }
+
+/* The modal has room to lay them out flat. */
+.snooze-row { flex-wrap: wrap; }
