@@ -55,14 +55,14 @@ LIGHT_FIELDS = """
     latestReviews(last: 10) { nodes { author { login } state } }
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
-    comments(last:1) { totalCount nodes { author { login } createdAt } }
+    comments(last:1) { totalCount nodes { author { login __typename } createdAt } }
     assignees(first:5) { nodes { login } }
   }
   ... on Issue {
     id number title url state createdAt updatedAt closedAt stateReason
     author { login } repository { nameWithOwner isPrivate }
     labels(first:10) { nodes { name color } }
-    comments(last:1) { totalCount nodes { author { login } createdAt } }
+    comments(last:1) { totalCount nodes { author { login __typename } createdAt } }
     assignees(first:5) { nodes { login } }
   }
 """
@@ -252,7 +252,11 @@ def _light_item(node: dict, login: str) -> dict | None:
         "assignees": [a["login"] for a in (node.get("assignees") or {}).get("nodes") or []],
         "comments": comments.get("totalCount", 0),
         "last_comment": ({"login": (last.get("author") or {}).get("login") or "ghost",
-                          "at": ts(last.get("createdAt"))} if last else None),
+                          "at": ts(last.get("createdAt")),
+                          # CI bots comment constantly; a snooze that they can
+                          # cancel is not a snooze.
+                          "bot": (last.get("author") or {}).get("__typename") == "Bot"}
+                         if last else None),
         "review_decision": node.get("reviewDecision"),
         "deciders": _reviewers(node),
         "approvals": sorted({r["login"] for r in _reviewers(node)

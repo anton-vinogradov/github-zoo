@@ -101,16 +101,24 @@ class Alerts:
             return
 
         current = {}
+        hidden = set()
         for item in items:
             verdict = item.get("verdict") or {}
-            if verdict.get("turn") == "you" and not item.get("hidden"):
+            if item.get("hidden"):
+                hidden.add(item["id"])
+                continue
+            if verdict.get("turn") == "you":
                 current[item["id"]] = _fingerprint(item, verdict)
 
         with self.lock:
             fresh = [i for i in items
                      if i["id"] in current
                      and self.announced.get(i["id"]) != current[i["id"]]]
-            cleared = [key for key in self.announced if key not in current]
+            # A snoozed card is not "gone" — forgetting it means the moment the
+            # snooze expires it looks new again and gets announced a second
+            # time, which is exactly what a snooze was meant to prevent.
+            cleared = [key for key in self.announced
+                       if key not in current and key not in hidden]
 
             for key in cleared:
                 self.announced.pop(key, None)

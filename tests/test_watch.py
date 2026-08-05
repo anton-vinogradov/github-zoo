@@ -362,44 +362,100 @@ def acks(tmp_path):
     return acks_mod.Acks(str(tmp_path / "acks.json"))
 
 
-def carded(updated):
-    return {"id": "acme/x#1", "updated": updated}
+def carded(**over):
+    """A card as apply() sees it: threads, approvals, last comment."""
+    base = {"id": "acme/x#1", "threads": [], "approvals": [], "blocking": [],
+            "last_comment": None}
+    base.update(over)
+    return base
 
 
-def test_mute_gives_way_to_activity(tmp_path):
-    """"Muted" that hides through a real comment is a promise nobody wants."""
+def bot_comment(at=NOW):
+    return {"login": "github-actions", "at": at, "bot": True}
+
+
+def human_comment(who="reviewer", at=NOW):
+    return {"login": who, "at": at, "bot": False}
+
+
+def test_mute_gives_way_to_a_real_comment(tmp_path):
+    """"Muted" that hides through a real answer is a promise nobody wants."""
+    import acks as acks_mod
     a = acks(tmp_path)
-    a.mute("acme/x#1", updated=NOW)
-    item = carded(NOW + 600)
-    a.apply([item], NOW + 700)
-    assert not item.get("hidden")
+    before = carded()
+    a.mute("acme/x#1", pulse=acks_mod.pulse(before, "me"))
+    after = carded(last_comment=human_comment(at=NOW + 600))
+    a.apply([after], NOW + 700, "me")
+    assert not after.get("hidden")
+
+
+def test_a_bot_cannot_cancel_a_snooze(tmp_path):
+    """The actual bug: a CI bot posted a build link four minutes later and the
+    card came straight back, because updatedAt had moved."""
+    import acks as acks_mod, time
+    a = acks(tmp_path)
+    before = carded()
+    a.snooze("acme/x#1", 86400, pulse=acks_mod.pulse(before, "me"))
+    after = carded(last_comment=bot_comment(at=time.time()))
+    a.apply([after], time.time() + 300, "me")
+    assert after.get("hidden") == "snooze"
+
+
+def test_your_own_comment_cannot_cancel_a_snooze(tmp_path):
+    """Pushing to your own branch is not somebody else answering you."""
+    import acks as acks_mod, time
+    a = acks(tmp_path)
+    a.snooze("acme/x#1", 86400, pulse=acks_mod.pulse(carded(), "me"))
+    after = carded(last_comment=human_comment(who="me", at=time.time()))
+    a.apply([after], time.time() + 300, "me")
+    assert after.get("hidden") == "snooze"
+
+
+def test_an_approval_cancels_a_snooze(tmp_path):
+    import acks as acks_mod, time
+    a = acks(tmp_path)
+    a.snooze("acme/x#1", 86400, pulse=acks_mod.pulse(carded(), "me"))
+    after = carded(approvals=["reviewer"])
+    a.apply([after], time.time() + 300, "me")
+    assert not after.get("hidden")
+
+
+def test_a_thread_waiting_on_you_cancels_a_snooze(tmp_path):
+    import acks as acks_mod, time
+    a = acks(tmp_path)
+    a.snooze("acme/x#1", 86400, pulse=acks_mod.pulse(carded(), "me"))
+    after = carded(threads=[{"resolved": False, "outdated": False, "last_by": "reviewer"}])
+    a.apply([after], time.time() + 300, "me")
+    assert not after.get("hidden")
 
 
 def test_forever_means_forever(tmp_path):
     """The 2019 pull request: activity on it is not news, it is the reason it
     kept coming back."""
+    import acks as acks_mod
     a = acks(tmp_path)
-    a.mute("acme/x#1", updated=NOW, forever=True)
-    item = carded(NOW + 10 ** 7)
-    a.apply([item], NOW + 10 ** 7 + 1)
+    a.mute("acme/x#1", pulse=acks_mod.pulse(carded(), "me"), forever=True)
+    item = carded(last_comment=human_comment(at=NOW + 10 ** 7),
+                  approvals=["someone"])
+    a.apply([item], NOW + 10 ** 7 + 1, "me")
     assert item["hidden"] == "forever"
 
 
 def test_forever_survives_a_restart(tmp_path):
     import acks as acks_mod
     path = str(tmp_path / "acks.json")
-    acks_mod.Acks(path).mute("acme/x#1", updated=NOW, forever=True)
-    item = carded(NOW + 10 ** 6)
-    acks_mod.Acks(path).apply([item], NOW + 10 ** 6 + 1)
+    acks_mod.Acks(path).mute("acme/x#1", forever=True)
+    item = carded(last_comment=human_comment(at=NOW + 10 ** 6))
+    acks_mod.Acks(path).apply([item], NOW + 10 ** 6 + 1, "me")
     assert item["hidden"] == "forever"
 
 
 def test_forever_can_still_be_undone_by_hand(tmp_path):
     a = acks(tmp_path)
-    a.mute("acme/x#1", updated=NOW, forever=True)
+    a.mute("acme/x#1", forever=True)
     a.clear("acme/x#1")
-    item = carded(NOW)
-    a.apply([item], NOW + 1)
+    item = carded()
+    a.apply([item], NOW + 1, "me")
     assert not item.get("hidden")
 
 
@@ -409,12 +465,32 @@ def test_a_snooze_still_expires(tmp_path):
     import time
     a = acks(tmp_path)
     real = time.time()
-    a.snooze("acme/x#1", 3600, updated=real)
+    a.snooze("acme/x#1", 3600)
 
-    still = {"id": "acme/x#1", "updated": real}
-    a.apply([still], real + 60)
+    still = carded()
+    a.apply([still], real + 60, "me")
     assert still["hidden"] == "snooze"
 
-    later = {"id": "acme/x#1", "updated": real}
-    a.apply([later], real + 7200)
+    later = carded()
+    a.apply([later], real + 7200, "me")
     assert not later.get("hidden")
+
+
+def test_entries_written_before_pulses_adopt_one(tmp_path):
+    """Otherwise "no baseline" reads as "nothing ever changes", and every mute
+    written by the previous version silently becomes permanent."""
+    import json, acks as acks_mod
+    path = tmp_path / "acks.json"
+    path.write_text(json.dumps({
+        "acme/x#1": {"kind": "mute", "until": 0, "at": NOW, "updated": NOW}
+    }), encoding="utf-8")
+
+    a = acks_mod.Acks(str(path))
+    first = carded()
+    a.apply([first], NOW + 60, "me")
+    assert first["hidden"] == "mute"          # still hidden on the seeding pass
+    assert a.snapshot()["acme/x#1"]["pulse"] == acks_mod.pulse(first, "me")
+
+    later = carded(last_comment=human_comment(at=NOW + 600))
+    a.apply([later], NOW + 700, "me")
+    assert not later.get("hidden")            # and a real comment frees it

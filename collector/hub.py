@@ -147,7 +147,7 @@ class Board:
                         item["verdict"]["turn"] == rules.YOU
                         and item["verdict"]["waiting_days"] >= float(self.cfg.get("stale_days", 14)))
 
-            hidden = self.acks.apply(items, now)
+            hidden = self.acks.apply(items, now, self.login)
             items.sort(key=lambda i: -(i["verdict"]["priority"]))
             summary = rules.summarise([i for i in items if not i.get("hidden")])
             summary["hidden"] = hidden
@@ -178,7 +178,7 @@ class Board:
             self.store.save_snapshot(snapshot)
             try:
                 seeded_before = self.alerts.seeded
-                self.alerts.process([i for i in items if not i.get("hidden")], summary)
+                self.alerts.process(items, summary)
                 # `alerts.seeded` is False only on the very first poll ever;
                 # announcing every approval and comment already on the board
                 # would be a wall of history nobody asked for.
@@ -239,7 +239,7 @@ class Board:
                     item["verdict"]["waiting_since"] = since
                     item["verdict"]["waiting_days"] = max(0.0, (now - since) / 86400.0)
             items.sort(key=lambda i: -(i["verdict"]["priority"]))
-            hidden = self.acks.apply(items, now)
+            hidden = self.acks.apply(items, now, self.login)
             summary = rules.summarise([i for i in items if not i.get("hidden")])
             summary["hidden"] = hidden
             self.snapshot = dict(snapshot, items=items, summary=summary)
@@ -260,7 +260,7 @@ class Board:
             for item in items:
                 item.pop("hidden", None)
                 item.pop("hidden_until", None)
-            hidden = self.acks.apply(items, time.time())
+            hidden = self.acks.apply(items, time.time(), self.login)
             summary = rules.summarise([i for i in items if not i.get("hidden")])
             summary["hidden"] = hidden
             self.snapshot = dict(snapshot, items=items, summary=summary)
@@ -375,7 +375,8 @@ class Handler(BaseHTTPRequestHandler):
             if not item_id:
                 self._json({"ok": False, "error": "нет id"}, 400)
                 return
-            self.board.acks.snooze(item_id, int(hours * 3600), _updated(self.board, item_id))
+            self.board.acks.snooze(item_id, int(hours * 3600),
+                                   _pulse(self.board, item_id))
             self.board.reapply_acks()
             self._json({"ok": True, "summary": self.board.state().get("summary")})
         elif path == "/api/mute":
@@ -383,7 +384,7 @@ class Handler(BaseHTTPRequestHandler):
             if not item_id:
                 self._json({"ok": False, "error": "нет id"}, 400)
                 return
-            self.board.acks.mute(item_id, _updated(self.board, item_id),
+            self.board.acks.mute(item_id, _pulse(self.board, item_id),
                                  bool(body.get("forever")))
             self.board.reapply_acks()
             self._json({"ok": True, "summary": self.board.state().get("summary")})
@@ -431,11 +432,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain; charset=utf-8")
 
 
-def _updated(board: Board, item_id: str) -> float:
+def _pulse(board: Board, item_id: str) -> str:
+    """The item's pulse right now, so hiding it records what it looked like."""
     for item in board.state().get("items") or []:
         if item.get("id") == item_id:
-            return item.get("updated") or 0.0
-    return 0.0
+            return acks_mod.pulse(item, board.login)
+    return ""
 
 
 def main() -> None:

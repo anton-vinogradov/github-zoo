@@ -61,8 +61,11 @@ title, for when the tab strip is too narrow to show an icon clearly.
 Anything can be quietened, in three ways that promise different things:
 
 * **snoozed** for an hour, four hours, a day (the default), three days or a
-  week. Cancelled the moment the item genuinely moves, so "not now" never
-  becomes "missed it".
+  week. Cancelled when something **real** happens: an answer from a human who
+  is not you, an approval, changes requested, a new thread. A CI bot posting a
+  build link does not count, and neither does your own push — using GitHub's
+  `updatedAt` for this meant a snooze lasted four minutes on an active pull
+  request.
 * **muted until something happens** — back on the board at the next real
   activity.
 * **muted for good** — the 2019 pull request that will never be merged, where
