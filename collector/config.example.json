@@ -27,6 +27,9 @@
   "detail_batch": 15,
   "http_timeout": 45,
 
+  "repush_is_your_move": false,
+  "_repush_is_your_move": "true вернёт правило «новые коммиты после твоего ревью» в «Твой ход». По умолчанию выключено: на живой ветке это чаще ребейз, чем ответ на замечания.",
+
   "notifications_include_ci": false,
   "_notifications_include_ci": "true вернёт в ленту ci_activity. На активном апстриме это 200 уведомлений из 280 — включать стоит только чтобы что-то поискать.",
 

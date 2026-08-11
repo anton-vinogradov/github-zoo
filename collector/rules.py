@@ -227,9 +227,12 @@ def _pull_request(item: dict, login: str, cfg: dict, now: float) -> dict:
 
     if my_review:
         head = item.get("head_at") or 0
-        # New commits after your review mean the author has answered and is
-        # waiting again — the most commonly missed hand-back there is.
-        if head > (my_review.get("at") or 0) + 60:
+        # New commits after your review can mean the author has answered and is
+        # waiting again — but on an active branch they mostly mean a rebase or
+        # a fixup, and re-reading every push is not a job anyone wants. Off by
+        # default; the card stays under "waiting on them" either way.
+        if (cfg.get("repush_is_your_move", False)
+                and head > (my_review.get("at") or 0) + 60):
             return {"turn": YOU, "reasons": reasons + [
                 _reason("repushed", "новые коммиты после твоего ревью", 30)],
                 "waiting_since": head}

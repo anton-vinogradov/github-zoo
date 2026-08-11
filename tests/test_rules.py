@@ -171,14 +171,34 @@ def test_review_request_you_already_answered_is_theirs():
     assert v["turn"] == rules.THEM
 
 
-def test_new_commits_after_your_review_hand_it_back():
-    """The most commonly missed hand-back: they pushed, nobody told you."""
+def test_new_commits_after_your_review_are_not_your_move_by_default():
+    """Mostly a rebase or a fixup on an active branch, and re-reading every
+    push is not a job anyone wants."""
     v = verdict(item(reviews=[{"login": ME, "state": "COMMENTED",
                                "at": NOW - 3 * DAY, "url": ""}],
                      head_at=NOW - DAY))
+    assert v["turn"] == rules.THEM
+    assert "repushed" not in codes(v)
+
+
+def test_new_commits_can_be_made_your_move():
+    v = rules.classify(item(reviews=[{"login": ME, "state": "COMMENTED",
+                                      "at": NOW - 3 * DAY, "url": ""}],
+                            head_at=NOW - DAY),
+                       ME, dict(CFG, repush_is_your_move=True), NOW)
     assert v["turn"] == rules.YOU
     assert "repushed" in codes(v)
     assert v["waiting_since"] == NOW - DAY
+
+
+def test_an_unanswered_thread_still_shows_through_a_repush():
+    """Turning the push rule off must not hide a question you never answered."""
+    v = verdict(item(reviews=[{"login": ME, "state": "COMMENTED",
+                               "at": NOW - 3 * DAY, "url": ""}],
+                     head_at=NOW - DAY,
+                     threads=[thread(opened_by=ME, last_by="author")]))
+    assert v["turn"] == rules.YOU
+    assert "threads" in codes(v)
 
 
 def test_your_review_then_nothing_waits_on_the_author():

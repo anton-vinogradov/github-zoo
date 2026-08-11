@@ -167,6 +167,7 @@ which documents every field inline. The ones worth knowing:
 | field | default | meaning |
 | --- | --- | --- |
 | `poll_seconds` | 300 | how often to ask GitHub |
+| `repush_is_your_move` | `false` | put "new commits since your review" back in "your move" |
 | `stale_days` | 14 | how long your move may wait before it is called stale |
 | `ignore_days` | 30 | untouched for this long → out of the way (shown on request) |
 | `done_days` | 7 | how long merged and closed work stays on the board; 0 turns it off |
