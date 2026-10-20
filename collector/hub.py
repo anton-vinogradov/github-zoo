@@ -149,7 +149,7 @@ class Board:
 
             hidden = self.acks.apply(items, now, self.login)
             items.sort(key=lambda i: -(i["verdict"]["priority"]))
-            summary = rules.summarise([i for i in items if not i.get("hidden")])
+            summary = self.summarise(items)
             summary["hidden"] = hidden
 
             snapshot = {
@@ -218,6 +218,21 @@ class Board:
                 self.snapshot = dict(self.snapshot, polling=False, error=error,
                                      error_at=time.time(), checked=time.time())
 
+    def summarise(self, items: list[dict]) -> dict:
+        """The header counts, with the same own-work rule Telegram uses.
+
+        One switch for both: a tab icon that says "someone is waiting" about a
+        card Telegram stays quiet about would be the same false alarm, moved.
+        """
+        include = bool(self.cfg.get("notify_own_work", False))
+        # Marked on every card too, hidden or not: the project tabs carry the
+        # same "waiting on you" badge and count it themselves in the browser.
+        for item in items:
+            verdict = item.get("verdict") or {}
+            verdict["calling"] = (verdict.get("turn") == rules.YOU
+                                  and (include or not rules.own_work_only(verdict)))
+        return rules.summarise([i for i in items if not i.get("hidden")], include)
+
     def reclassify(self) -> None:
         """Re-run the rules over the snapshot in hand.
 
@@ -240,7 +255,7 @@ class Board:
                     item["verdict"]["waiting_days"] = max(0.0, (now - since) / 86400.0)
             items.sort(key=lambda i: -(i["verdict"]["priority"]))
             hidden = self.acks.apply(items, now, self.login)
-            summary = rules.summarise([i for i in items if not i.get("hidden")])
+            summary = self.summarise(items)
             summary["hidden"] = hidden
             self.snapshot = dict(snapshot, items=items, summary=summary)
 
@@ -261,7 +276,7 @@ class Board:
                 item.pop("hidden", None)
                 item.pop("hidden_until", None)
             hidden = self.acks.apply(items, time.time(), self.login)
-            summary = rules.summarise([i for i in items if not i.get("hidden")])
+            summary = self.summarise(items)
             summary["hidden"] = hidden
             self.snapshot = dict(snapshot, items=items, summary=summary)
 

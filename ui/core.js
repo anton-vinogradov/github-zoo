@@ -127,7 +127,11 @@ function projects() {
     var p = map[it.repo] || (map[it.repo] = { repo: it.repo, fresh: 0, waiting: 0, total: 0 });
     p.total++;
     var turn = (it.verdict && it.verdict.turn) || 'idle';
-    if (turn === 'you') p.waiting++;
+    /* The badge means "someone is waiting on you", so it follows the server's
+       mark rather than the bucket: your own unreviewed pull request sits in
+       "your move" without anyone waiting. Older snapshots have no mark. */
+    var v = it.verdict || {};
+    if (v.calling !== undefined ? v.calling : turn === 'you') p.waiting++;
     if (turn !== 'archive' && (it.updated || 0) > p.fresh) p.fresh = it.updated || 0;
   });
   return Object.keys(map).map(function (k) { return map[k]; }).sort(function (a, b) {
@@ -227,6 +231,16 @@ function _hasInk(ctx, size) {
 function setTitle(count) {
   var base = document.title.replace(/^\(\d+\+?\)\s*/, '');
   document.title = count ? '(' + (count > 99 ? '99+' : count) + ') ' + base : base;
+}
+
+/* Cards somebody else put in your move. "Nobody is reviewing your pull
+   request" is in your move too, but nobody is waiting on you there, and an
+   orange tab sitting in the browser all day says the opposite. A snapshot
+   from before the server counted this has only `you`, and is used as-is
+   until the next poll replaces it. */
+function calling(summary) {
+  summary = summary || {};
+  return summary.calling !== undefined ? summary.calling : summary.you;
 }
 
 function showWaiting(count) {

@@ -29,19 +29,9 @@ from datetime import datetime
 
 import secrets
 
+from rules import own_work_only
+
 KIND_ICON = {"pr": "🔀", "issue": "🐛", "discussion": "💬"}
-
-# Reasons that describe the state of your own work rather than somebody else
-# moving towards you. "Nobody is reviewing this" is the plainest case: by
-# definition nobody did anything, so a message about it is a message about
-# nothing. They stay on the board; they just do not interrupt.
-OWN_WORK = {"no_reviewer", "ci", "draft"}
-
-
-def own_work_only(verdict: dict) -> bool:
-    """True when nothing in the verdict was caused by another person."""
-    return not any(r.get("weight") and r.get("code") not in OWN_WORK
-                   for r in verdict.get("reasons") or [])
 
 
 class Alerts:

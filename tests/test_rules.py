@@ -557,3 +557,47 @@ def test_classification_does_not_mutate_the_item():
     copy = dict(original)
     rules.classify(original, ME, CFG, NOW)
     assert {k: original[k] for k in copy} == copy
+
+
+# ---------- what the tab icon counts ----------
+
+def test_the_tab_icon_ignores_your_own_unreviewed_pull_request():
+    """An orange tab all day for "nobody is looking at your work" said someone
+    was waiting on you, which is the opposite of the truth."""
+    alone = verdict(item(mine=True, author=ME, created=NOW - 10 * DAY))
+    assert alone["turn"] == rules.YOU
+    got = rules.summarise([{"verdict": alone}])
+    assert got["you"] == 1          # still on the board under "your move"
+    assert got["calling"] == 0      # but nobody is calling
+
+
+def test_the_tab_icon_counts_somebody_waiting_on_you():
+    asked = verdict(item(found_by=["review"]))
+    got = rules.summarise([{"verdict": asked}])
+    assert got["calling"] == 1
+
+
+def test_red_ci_next_to_a_question_still_counts():
+    both = verdict(item(mine=True, author=ME, threads=[thread()],
+                        ci={"state": "FAILURE", "pending": 0, "total": 1,
+                            "failed": [{"name": "build", "url": ""}]}))
+    assert rules.summarise([{"verdict": both}])["calling"] == 1
+
+
+def test_own_work_can_be_counted_again():
+    alone = verdict(item(mine=True, author=ME, created=NOW - 10 * DAY))
+    assert rules.summarise([{"verdict": alone}], include_own_work=True)["calling"] == 1
+
+
+def test_hub_marks_each_card_for_the_tab_badges(tmp_path):
+    """The project tabs count in the browser, so each card carries the mark."""
+    import importlib
+    hub = importlib.import_module("hub")
+    board = hub.Board.__new__(hub.Board)
+    board.cfg = {}
+    own = {"verdict": verdict(item(mine=True, author=ME, created=NOW - 10 * DAY))}
+    asked = {"verdict": verdict(item(found_by=["review"]))}
+    summary = board.summarise([own, asked])
+    assert own["verdict"]["calling"] is False
+    assert asked["verdict"]["calling"] is True
+    assert (summary["you"], summary["calling"]) == (2, 1)

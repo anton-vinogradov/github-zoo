@@ -54,8 +54,11 @@ waiting on you.
   with no matching item — usually a merged pull request — gets its own section
   instead of disappearing.
 
-The tab icon is the part of this you see most: a blue octopus when nothing is
-waiting on you, an orange one when something is. The count sits in the page
+The tab icon is the part of this you see most: a blue octopus when nobody is
+waiting on you, an orange one when somebody is. Only cards another person put
+in your court count: your own pull request that nobody is reviewing stays in
+"your move" on the board but does not colour the tab — the same rule as
+Telegram. The count sits in the page
 title, for when the tab strip is too narrow to show an icon clearly.
 
 Anything can be quietened, in three ways that promise different things:

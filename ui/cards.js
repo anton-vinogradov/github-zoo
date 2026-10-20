@@ -373,7 +373,11 @@ function renderSummary() {
   if (!state || !state.generated) { el.textContent = 'первый опрос…'; return; }
   var s = state.summary || {};
   var bits = [];
-  bits.push(s.you + ' ' + plural(s.you, 'ждёт', 'ждут', 'ждут') + ' тебя');
+  /* "Ждут тебя" counts what the tab icon counts. The rest of "your move" is
+     your own work in progress, and says so instead of pretending to wait. */
+  var waitingOnYou = calling(s);
+  bits.push(waitingOnYou + ' ' + plural(waitingOnYou, 'ждёт', 'ждут', 'ждут') + ' тебя');
+  if (s.you > waitingOnYou) bits.push((s.you - waitingOnYou) + ' в работе у тебя');
   bits.push(s.them + ' за другими');
   if (s.done) bits.push(s.done + ' решено');
   if (s.stale) bits.push(s.stale + ' залежалось');

@@ -411,10 +411,29 @@ def _plural(n: int, one: str, few: str, many: str) -> str:
     return many
 
 
-def summarise(items: list[dict]) -> dict:
-    """Counts the header shows, and the alerting compares against."""
+# Reasons that describe the state of your own work rather than somebody else
+# moving towards you. "Nobody is reviewing this" is the plainest case: by
+# definition nobody did anything. Such cards stay in "your move" on the board,
+# but nothing that means "someone is waiting for you" — a Telegram message, the
+# orange tab icon — fires for them.
+OWN_WORK = {"no_reviewer", "ci", "draft"}
+
+
+def own_work_only(verdict: dict) -> bool:
+    """True when nothing in the verdict was caused by another person."""
+    return not any(r.get("weight") and r.get("code") not in OWN_WORK
+                   for r in verdict.get("reasons") or [])
+
+
+def summarise(items: list[dict], include_own_work: bool = False) -> dict:
+    """Counts the header shows, and the alerting compares against.
+
+    `calling` is the number behind the tab icon and title: cards in your move
+    that somebody else put there. `you` stays the size of the bucket on the
+    board, which is a different question.
+    """
     buckets = {YOU: 0, THEM: 0, IDLE: 0, ARCHIVE: 0, DONE: 0}
-    stale = rotting = unread = 0
+    stale = rotting = unread = calling = 0
     for item in items:
         verdict = item.get("verdict") or {}
         turn = verdict.get("turn", IDLE)
@@ -422,6 +441,9 @@ def summarise(items: list[dict]) -> dict:
         stale += bool(verdict.get("stale"))
         rotting += bool(verdict.get("rotting"))
         unread += verdict.get("unread") or 0
+        if turn == YOU and (include_own_work or not own_work_only(verdict)):
+            calling += 1
     return {"you": buckets[YOU], "them": buckets[THEM], "idle": buckets[IDLE],
             "archive": buckets[ARCHIVE], "done": buckets[DONE], "stale": stale,
-            "rotting": rotting, "unread": unread, "total": len(items)}
+            "rotting": rotting, "unread": unread, "calling": calling,
+            "total": len(items)}
