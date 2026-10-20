@@ -76,8 +76,11 @@ and read like the second.
 
 ## Telegram
 
-Optional. When something lands in your court, a message goes out; once a day a
-digest lists what is still waiting.
+Optional. When somebody else moves towards you — answers in a thread, asks
+for a review, requests changes — a message goes out; once a day a digest
+lists what is still waiting. The state of your own work ("nobody is
+reviewing this", red CI on your own branch) stays on the board by default:
+you already know it while you are working on it.
 
 It reports what happens *to* your work without ever becoming your move:
 **your pull request was approved** — the message that means "you can merge now"

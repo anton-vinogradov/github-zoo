@@ -31,9 +31,26 @@ import secrets
 
 KIND_ICON = {"pr": "🔀", "issue": "🐛", "discussion": "💬"}
 
+# Reasons that describe the state of your own work rather than somebody else
+# moving towards you. "Nobody is reviewing this" is the plainest case: by
+# definition nobody did anything, so a message about it is a message about
+# nothing. They stay on the board; they just do not interrupt.
+OWN_WORK = {"no_reviewer", "ci", "draft"}
+
+
+def own_work_only(verdict: dict) -> bool:
+    """True when nothing in the verdict was caused by another person."""
+    return not any(r.get("weight") and r.get("code") not in OWN_WORK
+                   for r in verdict.get("reasons") or [])
+
 
 class Alerts:
     def __init__(self, cfg: dict):
+        # The whole config, not just the Telegram section: the switch for own
+        # work lives at the top level with the other watch_* settings, and
+        # reading it per call lets the settings page change it without a
+        # restart.
+        self.root = cfg
         self.cfg = cfg.get("telegram") or {}
         self.enabled = bool(self.cfg.get("enabled") and self.cfg.get("chats"))
         self.binary = self.cfg.get("telegram_bin", "/opt/telegram.sh-repo/telegram")
@@ -107,7 +124,7 @@ class Alerts:
             if item.get("hidden"):
                 hidden.add(item["id"])
                 continue
-            if verdict.get("turn") == "you":
+            if verdict.get("turn") == "you" and self._worth_saying(verdict):
                 current[item["id"]] = _fingerprint(item, verdict)
 
         with self.lock:
@@ -252,6 +269,9 @@ class Alerts:
                 else f"🐙 Событий в твоих PR: {count}")
         self._send("\n".join([head, ""] + lines).rstrip() + self._footer())
 
+    def _worth_saying(self, verdict: dict) -> bool:
+        return bool(self.root.get("notify_own_work", False)) or not own_work_only(verdict)
+
     def _maybe_digest(self, items: list[dict], summary: dict) -> None:
         """One reminder a day about what is still sitting there."""
         now = time.time()
@@ -259,7 +279,8 @@ class Alerts:
         if hour != self.digest_hour or now - self.last_digest < 20 * 3600:
             return
         waiting = [i for i in items
-                   if (i.get("verdict") or {}).get("turn") == "you" and not i.get("hidden")]
+                   if (i.get("verdict") or {}).get("turn") == "you" and not i.get("hidden")
+                   and self._worth_saying(i["verdict"])]
         if not waiting:
             self.last_digest = now
             self._save()
